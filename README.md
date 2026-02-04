@@ -35,6 +35,13 @@ cw help                         # Show help
 | `--no-open` | Don't open Claude |
 | *(default)* | Interactive prompt |
 
+### Flags for `merge`
+
+| Flag | Description |
+|------|-------------|
+| *(default)* | Push branch to remote and create a PR via GitHub CLI |
+| `--local` | Squash-merge locally into base branch (no push, no PR) |
+
 ## Workflow
 
 ```bash
@@ -67,11 +74,22 @@ cw clean                               # Remove all worktrees
 - Branches are prefixed with `cw/` (e.g., `cw/auth`)
 - Auto-detects `main` or `master` as the base branch
 - Auto-installs dependencies (npm/yarn/pnpm) when creating worktrees
-- Creates PRs via GitHub CLI (`gh`) if available
+
+### Merge Behavior
+
+**Default (PR mode):**
+1. Pushes the worktree branch (`cw/<name>`) to remote
+2. Creates a PR from that branch → base branch via `gh pr create`
+3. Cleans up local worktree (remote branch stays until PR is merged)
+
+**With `--local`:**
+1. Squash-merges the branch into your base branch locally
+2. Cleans up worktree and deletes the branch
+3. No push, no PR — useful for local-only workflows
 
 ## Requirements
 
 - Git
 - Bash
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
-- *(Optional)* [GitHub CLI](https://cli.github.com) for auto-creating PRs
+- [GitHub CLI](https://cli.github.com) — for creating PRs (required for default `merge` behavior)
