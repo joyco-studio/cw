@@ -5,12 +5,10 @@ A CLI tool for spinning up isolated git worktrees to run parallel Claude Code se
 ## Installation
 
 ```bash
-# Make the script executable
-chmod +x cw.sh
-
-# Optionally, add to your PATH or create an alias
-alias cw="./path/to/cw.sh"
+curl -fsSL https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh -o /usr/local/bin/cw && chmod +x /usr/local/bin/cw
 ```
+
+> **Note:** You may need to use `sudo` if you don't have write permissions to `/usr/local/bin`.
 
 ## Usage
 
