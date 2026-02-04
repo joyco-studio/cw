@@ -5,10 +5,14 @@ A CLI tool for spinning up isolated git worktrees to run parallel Claude Code se
 ## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh -o /usr/local/bin/cw && chmod +x /usr/local/bin/cw
+curl -fsSL https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh -o ~/.local/bin/cw && chmod +x ~/.local/bin/cw
 ```
 
-> **Note:** You may need to use `sudo` if you don't have write permissions to `/usr/local/bin`.
+> **Note:** Make sure `~/.local/bin` exists and is in your PATH. If not:
+> ```bash
+> mkdir -p ~/.local/bin
+> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc  # or ~/.bashrc
+> ```
 
 ## Usage
 
