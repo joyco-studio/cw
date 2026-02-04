@@ -4,6 +4,7 @@
 #
 # Usage:
 #   cw new <name> [flags] [prompt]  Create a worktree + open claude
+#   cw open <name> [prompt]         Open Claude in an existing worktree
 #   cw ls                           List active worktrees
 #   cw cd <name>                    Print the path (use: cd $(cw cd <name>))
 #   cw merge <name> [--no-pr]      Squash-merge into base branch + cleanup
@@ -256,6 +257,30 @@ cmd_cd() {
   echo "$wt_path"
 }
 
+cmd_open() {
+  local name="${1:?usage: cw open <name> [prompt]}"
+  shift
+  local prompt="${*:-}"
+
+  local repo_root
+  repo_root="$(get_repo_root)"
+  local wt_path
+  wt_path="$(worktree_path "$repo_root" "$name")"
+
+  [[ -d "$wt_path" ]] || die "worktree '${name}' not found"
+
+  if [[ -n "$prompt" ]]; then
+    info "Opening Claude Code in ${BOLD}${name}${RESET} with prompt..."
+    echo -e "   ${DIM}\"${prompt}\"${RESET}"
+    echo ""
+    (cd "$wt_path" && claude "$prompt")
+  else
+    info "Opening Claude Code in ${BOLD}${name}${RESET}..."
+    echo ""
+    (cd "$wt_path" && claude)
+  fi
+}
+
 cmd_merge() {
   local name="${1:?usage: cw merge <name> [--no-pr]}"
   shift
@@ -442,6 +467,7 @@ cmd_help() {
   echo ""
   echo -e "${BOLD}Usage:${RESET}"
   echo "  cw new <name> [flags] [prompt]  Create worktree + open claude"
+  echo "  cw open <name> [prompt]         Open Claude in existing worktree"
   echo "  cw ls                           List active worktrees"
   echo '  cw cd <name>                    Print path (use: cd $(cw cd <name>))'
   echo "  cw merge <name> [--no-pr]       Squash-merge into base branch + cleanup"
@@ -463,7 +489,8 @@ cmd_help() {
   echo '  cw new auth "implement OAuth2 login"       # interactive open prompt'
   echo '  cw new auth --open "implement OAuth2"      # open immediately'
   echo '  cw new api --no-open                       # create only, open later'
-  echo '  cd $(cw cd api) && claude                  # open manually later'
+  echo '  cw open api                                # open existing worktree'
+  echo '  cw open api "continue with tests"          # open with prompt'
   echo '  cw merge auth                              # squash merge, push, cleanup'
   echo '  cw merge auth --no-pr                      # merge locally only'
   echo '  cw rm api                                  # discard without merging'
@@ -480,6 +507,7 @@ main() {
 
   case "$cmd" in
     new)   cmd_new "$@" ;;
+    open)  cmd_open "$@" ;;
     ls)    cmd_ls ;;
     cd)    cmd_cd "$@" ;;
     merge) cmd_merge "$@" ;;

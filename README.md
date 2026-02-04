@@ -18,6 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh -o ~/.lo
 
 ```bash
 cw new <name> [flags] [prompt]  # Create a worktree + open Claude
+cw open <name> [prompt]         # Open Claude in existing worktree
 cw ls                           # List active worktrees
 cw cd <name>                    # Print path (use: cd $(cw cd <name>))
 cw merge <name> [--no-pr]       # Squash-merge into base branch + cleanup
@@ -52,7 +53,8 @@ cw merge auth
 cw new auth "implement OAuth2 login"   # Interactive open prompt
 cw new api --open "build REST API"     # Open Claude immediately
 cw new tests --no-open                 # Create only, open later
-cd $(cw cd api) && claude              # Navigate and open manually
+cw open tests                          # Open existing worktree
+cw open tests "add unit tests"         # Open with a prompt
 cw merge auth                          # Squash merge + push + create PR
 cw merge auth --no-pr                  # Merge locally only
 cw rm api                              # Discard without merging
