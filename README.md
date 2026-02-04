@@ -1,0 +1,73 @@
+# cw — Claude Worktree Manager
+
+A CLI tool for spinning up isolated git worktrees to run parallel Claude Code sessions.
+
+## Installation
+
+```bash
+# Make the script executable
+chmod +x cw.sh
+
+# Optionally, add to your PATH or create an alias
+alias cw="./path/to/cw.sh"
+```
+
+## Usage
+
+```bash
+cw new <name> [flags] [prompt]  # Create a worktree + open Claude
+cw ls                           # List active worktrees
+cw cd <name>                    # Print path (use: cd $(cw cd <name>))
+cw merge <name> [--no-pr]       # Squash-merge into base branch + cleanup
+cw rm <name>                    # Remove a worktree (no merge)
+cw clean                        # Remove all cw worktrees
+cw help                         # Show help
+```
+
+### Flags for `new`
+
+| Flag | Description |
+|------|-------------|
+| `--open` | Open Claude immediately |
+| `--no-open` | Don't open Claude |
+| *(default)* | Interactive prompt |
+
+## Workflow
+
+```bash
+# 1. Create a worktree and start Claude with a task
+cw new auth "implement OAuth2 login"
+
+# 2. Claude works in isolation, commits as it goes
+
+# 3. When done, squash-merge back to main and cleanup
+cw merge auth
+```
+
+## Examples
+
+```bash
+cw new auth "implement OAuth2 login"   # Interactive open prompt
+cw new api --open "build REST API"     # Open Claude immediately
+cw new tests --no-open                 # Create only, open later
+cd $(cw cd api) && claude              # Navigate and open manually
+cw merge auth                          # Squash merge + push + create PR
+cw merge auth --no-pr                  # Merge locally only
+cw rm api                              # Discard without merging
+cw clean                               # Remove all worktrees
+```
+
+## How It Works
+
+- Worktrees are created under `<repo>/.worktrees/<name>`
+- Branches are prefixed with `cw/` (e.g., `cw/auth`)
+- Auto-detects `main` or `master` as the base branch
+- Auto-installs dependencies (npm/yarn/pnpm) when creating worktrees
+- Creates PRs via GitHub CLI (`gh`) if available
+
+## Requirements
+
+- Git
+- Bash
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
+- *(Optional)* [GitHub CLI](https://cli.github.com) for auto-creating PRs
