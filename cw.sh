@@ -7,7 +7,7 @@
 #   cw open <name> [prompt]         Open Claude in an existing worktree
 #   cw ls                           List active worktrees
 #   cw cd <name>                    Print the path (use: cd $(cw cd <name>))
-#   cw merge <name> [--no-pr]      Squash-merge into base branch + cleanup
+#   cw merge <name> [--local]      Push branch + create PR (or local squash with --local)
 #   cw rm <name>                    Remove a worktree and its branch
 #   cw clean                        Remove ALL worktrees created by cw
 #   cw help                         Show this help
@@ -282,12 +282,12 @@ cmd_open() {
 }
 
 cmd_merge() {
-  local name="${1:?usage: cw merge <name> [--no-pr]}"
+  local name="${1:?usage: cw merge <name> [--local]}"
   shift
-  local no_pr=false
+  local local_only=false
   for arg in "$@"; do
     case "$arg" in
-      --no-pr) no_pr=true ;;
+      --local) local_only=true ;;
       *) die "unknown flag: ${arg}" ;;
     esac
   done
@@ -331,71 +331,92 @@ cmd_merge() {
   echo -e "   ${DIM}${files_changed}${RESET}"
   echo ""
 
-  echo -n -e "   Squash merge into ${BOLD}${BASE_BRANCH}${RESET}? ${DIM}[Y/n]${RESET} "
-  read -r confirm
-  if [[ "$confirm" =~ ^[Nn]$ ]]; then
-    info "Aborted."
-    return
-  fi
+  if [[ "$local_only" == true ]]; then
+    # --local: Squash merge locally, no push, no PR
+    echo -n -e "   Squash merge into ${BOLD}${BASE_BRANCH}${RESET}? ${DIM}[Y/n]${RESET} "
+    read -r confirm
+    if [[ "$confirm" =~ ^[Nn]$ ]]; then
+      info "Aborted."
+      return
+    fi
 
-  # Build a commit message from the worktree's log
-  local commit_msg
-  commit_msg="$(printf "%s\n\n%s" \
-    "feat: ${name}" \
-    "$(git log --oneline "${BASE_BRANCH}..${branch}")"
-  )"
+    # Build a commit message from the worktree's log
+    local commit_msg
+    commit_msg="$(printf "%s\n\n%s" \
+      "feat: ${name}" \
+      "$(git log --oneline "${BASE_BRANCH}..${branch}")"
+    )"
 
-  # Squash merge
-  info "Merging..."
-  git checkout "$BASE_BRANCH" --quiet
-  if git merge --squash "$branch" --quiet 2>/dev/null; then
-    git commit -m "$commit_msg" --quiet
-    ok "Squash-merged ${BOLD}${branch}${RESET} into ${BOLD}${BASE_BRANCH}${RESET}"
+    # Squash merge
+    info "Merging..."
+    git checkout "$BASE_BRANCH" --quiet
+    if git merge --squash "$branch" --quiet 2>/dev/null; then
+      git commit -m "$commit_msg" --quiet
+      ok "Squash-merged ${BOLD}${branch}${RESET} into ${BOLD}${BASE_BRANCH}${RESET}"
+    else
+      echo ""
+      warn "Merge conflicts detected. Resolve them, then run:"
+      echo -e "   ${DIM}git commit${RESET}"
+      echo -e "   ${DIM}cw rm ${name}${RESET}"
+      return 1
+    fi
   else
-    echo ""
-    warn "Merge conflicts detected. Resolve them, then run:"
-    echo -e "   ${DIM}git commit${RESET}"
-    echo -e "   ${DIM}cw rm ${name}${RESET}"
-    return 1
-  fi
+    # Default: Push branch and create PR (let GitHub handle the merge)
+    echo -n -e "   Push branch and create PR? ${DIM}[Y/n]${RESET} "
+    read -r confirm
+    if [[ "$confirm" =~ ^[Nn]$ ]]; then
+      info "Aborted."
+      return
+    fi
 
-  # Push + PR (unless --no-pr)
-  if [[ "$no_pr" == false ]]; then
     local has_remote
     has_remote="$(git remote 2>/dev/null | head -1)"
 
-    if [[ -n "$has_remote" ]]; then
-      info "Pushing to ${has_remote}..."
-      if git push 2>/dev/null; then
-        ok "Pushed to remote"
+    if [[ -z "$has_remote" ]]; then
+      die "no git remote configured — use --local for local-only merge"
+    fi
 
-        if command -v gh &>/dev/null; then
-          info "Opening pull request..."
-          if gh pr create --fill 2>/dev/null; then
-            ok "PR created"
-          else
-            warn "Could not create PR via gh — you may need to open one manually"
-          fi
-        else
-          info "Install ${BOLD}gh${RESET} CLI to auto-create PRs: ${DIM}https://cli.github.com${RESET}"
-        fi
+    info "Pushing branch ${BOLD}${branch}${RESET} to ${has_remote}..."
+    if git push -u "$has_remote" "$branch" 2>/dev/null; then
+      ok "Pushed branch to remote"
+    else
+      die "push failed — check your remote configuration"
+    fi
+
+    if command -v gh &>/dev/null; then
+      info "Creating pull request..."
+      if gh pr create --fill --head "$branch" --base "$BASE_BRANCH"; then
+        ok "PR created"
       else
-        warn "Push failed — you may need to push manually"
+        warn "Could not create PR via gh — you may need to open one manually"
+        echo -e "   ${DIM}gh pr create --head ${branch} --base ${BASE_BRANCH}${RESET}"
       fi
+    else
+      warn "Install ${BOLD}gh${RESET} CLI to auto-create PRs: ${DIM}https://cli.github.com${RESET}"
+      echo -e "   ${DIM}Or create PR manually from branch: ${branch}${RESET}"
     fi
   fi
 
-  # Cleanup
+  # Cleanup worktree (but handle branch differently based on mode)
   echo ""
   info "Cleaning up worktree..."
   git worktree remove "$wt_path" --force 2>/dev/null || rm -rf "$wt_path"
   git worktree prune
-  git branch -D "$branch" 2>/dev/null || true
 
   local wt_dir="${repo_root}/${CW_DIR_PREFIX}"
   rmdir "$wt_dir" 2>/dev/null || true
 
-  ok "Done — ${BOLD}${name}${RESET} merged and cleaned up"
+  if [[ "$local_only" == true ]]; then
+    # For local merge, delete the branch entirely
+    git branch -D "$branch" 2>/dev/null || true
+    ok "Done — ${BOLD}${name}${RESET} merged and cleaned up"
+  else
+    # For PR flow, keep the local branch reference (remote branch is what matters)
+    # The branch will be deleted when PR is merged via GitHub
+    git branch -D "$branch" 2>/dev/null || true
+    ok "Done — PR created for ${BOLD}${name}${RESET}, worktree cleaned up"
+    echo -e "   ${DIM}Remote branch ${branch} will be deleted when PR is merged${RESET}"
+  fi
 }
 
 cmd_rm() {
@@ -470,7 +491,7 @@ cmd_help() {
   echo "  cw open <name> [prompt]         Open Claude in existing worktree"
   echo "  cw ls                           List active worktrees"
   echo '  cw cd <name>                    Print path (use: cd $(cw cd <name>))'
-  echo "  cw merge <name> [--no-pr]       Squash-merge into base branch + cleanup"
+  echo "  cw merge <name> [--local]       Push branch + create PR (--local for local squash)"
   echo "  cw rm <name>                    Remove a worktree (no merge)"
   echo "  cw clean                        Remove all cw worktrees"
   echo "  cw help                         Show this help"
@@ -483,7 +504,7 @@ cmd_help() {
   echo -e "${BOLD}Workflow:${RESET}"
   echo '  1. cw new auth "implement OAuth2 login"   # create + open claude'
   echo '  2. Claude works, commits as it goes'
-  echo '  3. cw merge auth                          # squash → main, cleanup'
+  echo '  3. cw merge auth                          # push branch, open PR, cleanup'
   echo ""
   echo -e "${BOLD}Examples:${RESET}"
   echo '  cw new auth "implement OAuth2 login"       # interactive open prompt'
@@ -491,8 +512,8 @@ cmd_help() {
   echo '  cw new api --no-open                       # create only, open later'
   echo '  cw open api                                # open existing worktree'
   echo '  cw open api "continue with tests"          # open with prompt'
-  echo '  cw merge auth                              # squash merge, push, cleanup'
-  echo '  cw merge auth --no-pr                      # merge locally only'
+  echo '  cw merge auth                              # push branch, create PR, cleanup'
+  echo '  cw merge auth --local                      # squash merge locally, no PR'
   echo '  cw rm api                                  # discard without merging'
   echo '  cw clean'
   echo ""

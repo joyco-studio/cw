@@ -21,7 +21,7 @@ cw new <name> [flags] [prompt]  # Create a worktree + open Claude
 cw open <name> [prompt]         # Open Claude in existing worktree
 cw ls                           # List active worktrees
 cw cd <name>                    # Print path (use: cd $(cw cd <name>))
-cw merge <name> [--no-pr]       # Squash-merge into base branch + cleanup
+cw merge <name> [--local]       # Push branch + create PR (--local for local squash)
 cw rm <name>                    # Remove a worktree (no merge)
 cw clean                        # Remove all cw worktrees
 cw help                         # Show help
@@ -43,7 +43,7 @@ cw new auth "implement OAuth2 login"
 
 # 2. Claude works in isolation, commits as it goes
 
-# 3. When done, squash-merge back to main and cleanup
+# 3. When done, push branch and create a PR
 cw merge auth
 ```
 
@@ -55,8 +55,8 @@ cw new api --open "build REST API"     # Open Claude immediately
 cw new tests --no-open                 # Create only, open later
 cw open tests                          # Open existing worktree
 cw open tests "add unit tests"         # Open with a prompt
-cw merge auth                          # Squash merge + push + create PR
-cw merge auth --no-pr                  # Merge locally only
+cw merge auth                          # Push branch + create PR
+cw merge auth --local                  # Squash merge locally, no PR
 cw rm api                              # Discard without merging
 cw clean                               # Remove all worktrees
 ```
