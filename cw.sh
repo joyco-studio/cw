@@ -385,8 +385,10 @@ cmd_merge() {
 
     if command -v gh &>/dev/null; then
       info "Creating pull request..."
-      if gh pr create --fill --head "$branch" --base "$BASE_BRANCH"; then
+      local pr_url
+      if pr_url=$(gh pr create --fill --head "$branch" --base "$BASE_BRANCH" 2>&1); then
         ok "PR created"
+        echo -e "   ${DIM}${pr_url}${RESET}"
       else
         warn "Could not create PR via gh — you may need to open one manually"
         echo -e "   ${DIM}gh pr create --head ${branch} --base ${BASE_BRANCH}${RESET}"
