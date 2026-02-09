@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1](https://github.com/joyco-studio/cw/compare/v0.1.0...v0.1.1) (2026-02-09)
+
+
+### Features
+
+* add release-please for automated versioning ([7e42573](https://github.com/joyco-studio/cw/commit/7e4257396d81ee6da19b723e91f24b691cbc37f2))
+
 ## [Unreleased]
 
 ## [0.1.0] - 2025-06-07
