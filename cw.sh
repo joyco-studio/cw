@@ -626,7 +626,20 @@ _cw_zsh() {
   local -a names
 
   if (( CURRENT == 2 )); then
-    compadd -- cd clean help ls merge new open rm upgrade version
+    local -a commands
+    commands=(
+      'cd:change directory into a worktree'
+      'clean:remove all cw worktrees'
+      'help:show usage information'
+      'ls:list active worktrees'
+      'merge:push branch and create a pull request'
+      'new:create a worktree and open Claude'
+      'open:open Claude in an existing worktree'
+      'rm:remove a worktree'
+      'upgrade:upgrade cw to the latest version'
+      'version:show current version'
+    )
+    _describe 'command' commands
     return
   fi
 
@@ -635,7 +648,12 @@ _cw_zsh() {
   case "$cmd" in
     new)
       if [[ "$words[CURRENT]" == -* ]]; then
-        compadd -- --open --no-open
+        local -a flags
+        flags=(
+          '--open:open Claude immediately'
+          '--no-open:create worktree without opening Claude'
+        )
+        _describe 'flag' flags
       fi
       ;;
     open|cd|rm)
@@ -649,7 +667,11 @@ _cw_zsh() {
         names=("${(@f)$(_cw_list_worktree_names)}")
         [[ -n "${names[1]}" ]] && compadd -a names
       elif [[ "$words[CURRENT]" == -* ]]; then
-        compadd -- --local
+        local -a flags
+        flags=(
+          '--local:squash merge locally without creating a PR'
+        )
+        _describe 'flag' flags
       fi
       ;;
   esac
