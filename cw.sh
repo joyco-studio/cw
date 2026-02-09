@@ -29,7 +29,7 @@
 set -euo pipefail
 
 # ── Version ───────────────────────────────────────────────────────────────
-CW_VERSION="0.1.2" # x-release-please-version
+CW_VERSION="0.1.3" # x-release-please-version
 
 # ── Config ──────────────────────────────────────────────────────────────────
 CW_PREFIX="cw"                          # branch prefix to namespace cw branches
