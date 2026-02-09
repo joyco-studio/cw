@@ -14,13 +14,19 @@ curl -fsSL https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh -o ~/.lo
 > echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc  # or ~/.bashrc
 > ```
 
+Then add this to your `~/.bashrc` or `~/.zshrc` so that `cw cd` can change your shell directory:
+
+```bash
+eval "$(cw init)"
+```
+
 ## Usage
 
 ```bash
 cw new <name> [flags] [prompt]  # Create a worktree + open Claude
 cw open <name> [prompt]         # Open Claude in existing worktree
 cw ls                           # List active worktrees
-cw cd <name>                    # Print path (use: cd $(cw cd <name>))
+cw cd <name>                    # cd into a worktree
 cw merge <name> [--local]       # Push branch + create PR (--local for local squash)
 cw rm <name>                    # Remove a worktree (no merge)
 cw clean                        # Remove all cw worktrees
