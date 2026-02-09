@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5](https://github.com/joyco-studio/cw/compare/v0.1.4...v0.1.5) (2026-02-09)
+
+
+### Features
+
+* add source-aware entry point and improved tab completion ([e4d8987](https://github.com/joyco-studio/cw/commit/e4d8987d6863de1c823f35eea57d3fc4fc10cc69))
+
 ## [0.1.4](https://github.com/joyco-studio/cw/compare/v0.1.3...v0.1.4) (2026-02-09)
 
 
