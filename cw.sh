@@ -181,7 +181,7 @@ unset _cw_is_sourced
 set -euo pipefail
 
 # ── Version ───────────────────────────────────────────────────────────────
-CW_VERSION="0.1.4" # x-release-please-version
+CW_VERSION="0.1.5" # x-release-please-version
 
 # ── Config ──────────────────────────────────────────────────────────────────
 CW_PREFIX="cw"                          # branch prefix to namespace cw branches
@@ -300,7 +300,8 @@ cmd_new() {
 
   local repo_root
   repo_root="$(get_repo_root)"
-  BASE_BRANCH="$(get_base_branch)"
+  local current_ref
+  current_ref="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")"
 
   local wt_path branch
   wt_path="$(worktree_path "$repo_root" "$name")"
@@ -317,8 +318,8 @@ cmd_new() {
     echo "${CW_DIR_PREFIX}/" > "$gitignore"
   fi
 
-  info "Creating worktree ${BOLD}${name}${RESET} from ${DIM}${BASE_BRANCH}${RESET}"
-  git worktree add -b "$branch" "$wt_path" "$BASE_BRANCH" --quiet
+  info "Creating worktree ${BOLD}${name}${RESET} from ${DIM}${current_ref}${RESET}"
+  git worktree add -b "$branch" "$wt_path" HEAD --quiet
 
   # ── Post-setup: install deps if needed ──
   if [[ -f "${wt_path}/package-lock.json" ]]; then
@@ -458,7 +459,14 @@ cmd_merge() {
 
   local repo_root
   repo_root="$(get_repo_root)"
-  BASE_BRANCH="$(get_base_branch)"
+
+  if [[ "$local_only" == true ]]; then
+    # For local merge, target whatever branch the main repo's HEAD is on
+    BASE_BRANCH="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  else
+    # For PR flow, target the repo's default branch (main/master)
+    BASE_BRANCH="$(get_base_branch)"
+  fi
 
   local wt_path branch
   wt_path="$(worktree_path "$repo_root" "$name")"
@@ -511,11 +519,10 @@ cmd_merge() {
       "$(git log --oneline "${BASE_BRANCH}..${branch}")"
     )"
 
-    # Squash merge
+    # Squash merge into current HEAD (no branch switch)
     info "Merging..."
-    git checkout "$BASE_BRANCH" --quiet
-    if git merge --squash "$branch" --quiet 2>/dev/null; then
-      git commit -m "$commit_msg" --quiet
+    if git -C "$repo_root" merge --squash "$branch" --quiet 2>/dev/null; then
+      git -C "$repo_root" commit -m "$commit_msg" --quiet
       ok "Squash-merged ${BOLD}${branch}${RESET} into ${BOLD}${BASE_BRANCH}${RESET}"
     else
       echo ""
