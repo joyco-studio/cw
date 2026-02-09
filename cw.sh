@@ -6,8 +6,7 @@
 #   cw new <name> [flags] [prompt]  Create a worktree + open claude
 #   cw open <name> [prompt]         Open Claude in an existing worktree
 #   cw ls                           List active worktrees
-#   cw cd <name>                    cd into a worktree (requires shell setup: eval "$(cw init)")
-#   cw init                         Print shell wrapper (add to .bashrc/.zshrc)
+#   cw cd <name>                    Print the path (use: cd $(cw cd <name>))
 #   cw merge <name> [--local]      Push branch + create PR (or local squash with --local)
 #   cw rm <name>                    Remove a worktree and its branch
 #   cw clean                        Remove ALL worktrees created by cw
@@ -258,44 +257,6 @@ cmd_cd() {
   echo "$wt_path"
 }
 
-cmd_init() {
-  # Detect the current shell from the parent process
-  local shell_name
-  shell_name="$(basename "${SHELL:-bash}")"
-
-  case "$shell_name" in
-    zsh|bash)
-      # Output a shell wrapper function that intercepts "cw cd" to change
-      # the directory in the current shell. All other subcommands pass through.
-      cat <<'SHELL_FUNC'
-cw() {
-  if [[ "${1:-}" == "cd" ]]; then
-    local dir
-    dir="$(command cw cd "${@:2}")" && builtin cd "$dir"
-  else
-    command cw "$@"
-  fi
-}
-SHELL_FUNC
-      ;;
-    fish)
-      cat <<'SHELL_FUNC'
-function cw
-  if test "$argv[1]" = "cd"
-    set -l dir (command cw cd $argv[2..])
-    and builtin cd $dir
-  else
-    command cw $argv
-  end
-end
-SHELL_FUNC
-      ;;
-    *)
-      die "unsupported shell: ${shell_name} (supported: bash, zsh, fish)"
-      ;;
-  esac
-}
-
 cmd_open() {
   local name="${1:?usage: cw open <name> [prompt]}"
   shift
@@ -531,15 +492,11 @@ cmd_help() {
   echo "  cw new <name> [flags] [prompt]  Create worktree + open claude"
   echo "  cw open <name> [prompt]         Open Claude in existing worktree"
   echo "  cw ls                           List active worktrees"
-  echo "  cw cd <name>                    cd into a worktree"
-  echo "  cw init                         Print shell wrapper (eval in rc file)"
+  echo '  cw cd <name>                    Print path (use: cd $(cw cd <name>))'
   echo "  cw merge <name> [--local]       Push branch + create PR (--local for local squash)"
   echo "  cw rm <name>                    Remove a worktree (no merge)"
   echo "  cw clean                        Remove all cw worktrees"
   echo "  cw help                         Show this help"
-  echo ""
-  echo -e "${BOLD}Shell setup (required for cw cd):${RESET}"
-  echo '  eval "$(cw init)"              # add to ~/.bashrc or ~/.zshrc'
   echo ""
   echo -e "${BOLD}Flags for new:${RESET}"
   echo "  --open       Open Claude immediately (skip prompt)"
@@ -576,7 +533,6 @@ main() {
     open)  cmd_open "$@" ;;
     ls)    cmd_ls ;;
     cd)    cmd_cd "$@" ;;
-    init)  cmd_init ;;
     merge) cmd_merge "$@" ;;
     rm)    cmd_rm "$@" ;;
     clean) cmd_clean ;;
