@@ -621,6 +621,40 @@ _cw_list_worktree_names() {
   fi
 }
 
+# Zsh-native completion function (avoids bashcompinit spacing issues)
+_cw_zsh() {
+  local -a names
+
+  if (( CURRENT == 2 )); then
+    compadd -- cd clean help ls merge new open rm upgrade version
+    return
+  fi
+
+  local cmd="${words[2]}"
+
+  case "$cmd" in
+    new)
+      if [[ "$words[CURRENT]" == -* ]]; then
+        compadd -- --open --no-open
+      fi
+      ;;
+    open|cd|rm)
+      if (( CURRENT == 3 )); then
+        names=("${(@f)$(_cw_list_worktree_names)}")
+        [[ -n "${names[1]}" ]] && compadd -a names
+      fi
+      ;;
+    merge)
+      if (( CURRENT == 3 )); then
+        names=("${(@f)$(_cw_list_worktree_names)}")
+        [[ -n "${names[1]}" ]] && compadd -a names
+      elif [[ "$words[CURRENT]" == -* ]]; then
+        compadd -- --local
+      fi
+      ;;
+  esac
+}
+
 # Bash completion function
 _cw_completions() {
   local cur prev
@@ -688,8 +722,7 @@ if [ "$_cw_sourced" -eq 1 ]; then
 
   # Register completions
   if [ -n "${ZSH_VERSION:-}" ]; then
-    autoload -Uz bashcompinit && bashcompinit
-    complete -F _cw_completions cw
+    compdef _cw_zsh cw
   elif [ -n "${BASH_VERSION:-}" ]; then
     complete -F _cw_completions cw
   fi
