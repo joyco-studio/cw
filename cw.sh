@@ -10,6 +10,8 @@
 #   cw merge <name> [--local]      Push branch + create PR (or local squash with --local)
 #   cw rm <name>                    Remove a worktree and its branch
 #   cw clean                        Remove ALL worktrees created by cw
+#   cw upgrade                      Upgrade cw to the latest version
+#   cw version                      Show current version
 #   cw help                         Show this help
 #
 # Flags for `new`:
@@ -25,6 +27,9 @@
 #   cw clean
 
 set -euo pipefail
+
+# ── Version ───────────────────────────────────────────────────────────────
+CW_VERSION="0.1.0"
 
 # ── Config ──────────────────────────────────────────────────────────────────
 CW_PREFIX="cw"                          # branch prefix to namespace cw branches
@@ -492,6 +497,40 @@ cmd_clean() {
   ok "All clean."
 }
 
+cmd_upgrade() {
+  local bin_path
+  bin_path="$(command -v cw 2>/dev/null || echo "$HOME/.local/bin/cw")"
+  local repo_url="https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh"
+
+  info "Current version: ${BOLD}${CW_VERSION}${RESET}"
+  info "Downloading latest version..."
+
+  local tmp
+  tmp="$(mktemp)"
+  if curl -fsSL "$repo_url" -o "$tmp"; then
+    local new_version
+    new_version="$(grep -m1 '^CW_VERSION=' "$tmp" | cut -d'"' -f2)"
+    if [[ -z "$new_version" ]]; then
+      rm -f "$tmp"
+      die "failed to parse version from downloaded file"
+    fi
+
+    if [[ "$new_version" == "$CW_VERSION" ]]; then
+      rm -f "$tmp"
+      ok "Already on the latest version ${BOLD}${CW_VERSION}${RESET}"
+      return
+    fi
+
+    chmod +x "$tmp"
+    mv -f "$tmp" "$bin_path"
+    ok "Upgraded ${BOLD}${CW_VERSION}${RESET} → ${BOLD}${new_version}${RESET}"
+    echo -e "   ${DIM}Restart your shell or run: source ${bin_path}${RESET}"
+  else
+    rm -f "$tmp"
+    die "download failed — check your internet connection"
+  fi
+}
+
 cmd_help() {
   echo -e "${BOLD}cw${RESET} — Claude Worktree manager"
   echo ""
@@ -503,6 +542,8 @@ cmd_help() {
   echo "  cw merge <name> [--local]       Push branch + create PR (--local for local squash)"
   echo "  cw rm <name>                    Remove a worktree (no merge)"
   echo "  cw clean                        Remove all cw worktrees"
+  echo "  cw upgrade                      Upgrade cw to the latest version"
+  echo "  cw version                      Show current version"
   echo "  cw help                         Show this help"
   echo ""
   echo -e "${BOLD}Flags for new:${RESET}"
@@ -543,7 +584,9 @@ main() {
     merge) cmd_merge "$@" ;;
     rm)    cmd_rm "$@" ;;
     clean) cmd_clean ;;
+    upgrade) cmd_upgrade ;;
     help|-h|--help) cmd_help ;;
+    version|--version|-v) echo "cw ${CW_VERSION}" ;;
     *)     die "unknown command: ${cmd}\nRun 'cw help' for usage." ;;
   esac
 }
