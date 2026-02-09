@@ -604,6 +604,67 @@ main() {
   esac
 }
 
+# ── Tab Completion ────────────────────────────────────────────────────────
+
+# List existing worktree names (used by completions)
+_cw_list_worktree_names() {
+  local repo_root git_common_dir
+  git_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
+  repo_root="$(cd "$git_common_dir" 2>/dev/null && pwd)" || return 0
+  repo_root="$(dirname "$repo_root")"
+  local wt_dir="${repo_root}/.worktrees"
+  if [[ -d "$wt_dir" ]]; then
+    local d
+    for d in "${wt_dir}"/*/; do
+      [[ -d "$d" ]] && basename "$d"
+    done
+  fi
+}
+
+# Bash completion function
+_cw_completions() {
+  local cur prev
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  local commands="new open ls cd merge rm clean upgrade help version"
+
+  # Complete command name (first argument)
+  if [[ "$COMP_CWORD" -eq 1 ]]; then
+    COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+    return
+  fi
+
+  local cmd="${COMP_WORDS[1]}"
+
+  case "$cmd" in
+    new)
+      # Flags only — name is free-form
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--open --no-open" -- "$cur"))
+      fi
+      ;;
+    open|cd|rm)
+      # Complete worktree names for the <name> argument
+      if [[ "$COMP_CWORD" -eq 2 ]]; then
+        local names
+        names="$(_cw_list_worktree_names)"
+        COMPREPLY=($(compgen -W "$names" -- "$cur"))
+      fi
+      ;;
+    merge)
+      # First arg: worktree name.  After that: --local flag
+      if [[ "$COMP_CWORD" -eq 2 ]]; then
+        local names
+        names="$(_cw_list_worktree_names)"
+        COMPREPLY=($(compgen -W "$names" -- "$cur"))
+      elif [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--local" -- "$cur"))
+      fi
+      ;;
+  esac
+}
+
 # ── Source-aware entry point ──────────────────────────────────────────────
 # When sourced, define a cw() wrapper so `cw cd` can change the shell's
 # working directory.  When executed directly, run normally.
@@ -624,6 +685,14 @@ if [ "$_cw_sourced" -eq 1 ]; then
       command cw "$@"
     fi
   }
+
+  # Register completions
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    autoload -Uz bashcompinit && bashcompinit
+    complete -F _cw_completions cw
+  elif [ -n "${BASH_VERSION:-}" ]; then
+    complete -F _cw_completions cw
+  fi
 else
   main "$@"
 fi
