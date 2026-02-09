@@ -498,36 +498,49 @@ cmd_clean() {
 }
 
 cmd_upgrade() {
+  command -v curl &>/dev/null || die "curl is required for upgrade"
+
   local bin_path
   bin_path="$(command -v cw 2>/dev/null || echo "$HOME/.local/bin/cw")"
-  local repo_url="https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh"
+  local gh_repo="joyco-studio/cw"
+  local api_url="https://api.github.com/repos/${gh_repo}/releases/latest"
 
   info "Current version: ${BOLD}${CW_VERSION}${RESET}"
-  info "Downloading latest version..."
+  info "Checking for updates..."
 
+  # Fetch latest release tag from GitHub Releases API
+  local api_response
+  api_response="$(curl -fsSL "$api_url" 2>/dev/null)" \
+    || die "failed to check for updates — check your internet connection"
+
+  # Parse tag_name from JSON (e.g. "v0.2.0") without jq dependency
+  local latest_tag
+  latest_tag="$(echo "$api_response" | grep -m1 '"tag_name"' | cut -d'"' -f4)"
+  [[ -n "$latest_tag" ]] || die "could not determine latest version"
+
+  # Strip leading 'v' for comparison (v0.2.0 → 0.2.0)
+  local latest_version="${latest_tag#v}"
+
+  if [[ "$latest_version" == "$CW_VERSION" ]]; then
+    ok "Already on the latest version ${BOLD}${CW_VERSION}${RESET}"
+    return
+  fi
+
+  info "New version available: ${BOLD}${latest_version}${RESET}"
+  info "Downloading ${latest_tag}..."
+
+  # Download the script from the tagged release
+  local download_url="https://raw.githubusercontent.com/${gh_repo}/${latest_tag}/cw.sh"
   local tmp
   tmp="$(mktemp)"
-  if curl -fsSL "$repo_url" -o "$tmp"; then
-    local new_version
-    new_version="$(grep -m1 '^CW_VERSION=' "$tmp" | cut -d'"' -f2)"
-    if [[ -z "$new_version" ]]; then
-      rm -f "$tmp"
-      die "failed to parse version from downloaded file"
-    fi
-
-    if [[ "$new_version" == "$CW_VERSION" ]]; then
-      rm -f "$tmp"
-      ok "Already on the latest version ${BOLD}${CW_VERSION}${RESET}"
-      return
-    fi
-
+  if curl -fsSL "$download_url" -o "$tmp"; then
     chmod +x "$tmp"
     mv -f "$tmp" "$bin_path"
-    ok "Upgraded ${BOLD}${CW_VERSION}${RESET} → ${BOLD}${new_version}${RESET}"
+    ok "Upgraded ${BOLD}${CW_VERSION}${RESET} → ${BOLD}${latest_version}${RESET}"
     echo -e "   ${DIM}Restart your shell or run: source ${bin_path}${RESET}"
   else
     rm -f "$tmp"
-    die "download failed — check your internet connection"
+    die "download failed — could not fetch ${latest_tag}"
   fi
 }
 

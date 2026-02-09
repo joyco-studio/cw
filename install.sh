@@ -3,13 +3,25 @@ set -euo pipefail
 
 BIN_DIR="$HOME/.local/bin"
 BIN_PATH="$BIN_DIR/cw"
-REPO="https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh"
+GH_REPO="joyco-studio/cw"
 SOURCE_LINE='source ~/.local/bin/cw'
+
+# ── Resolve latest release ───────────────────────────────────────────────
+echo "Checking latest release..."
+API_URL="https://api.github.com/repos/${GH_REPO}/releases/latest"
+TAG="$(curl -fsSL "$API_URL" 2>/dev/null | grep -m1 '"tag_name"' | cut -d'"' -f4)"
+
+if [ -z "$TAG" ]; then
+  echo "Could not determine latest release, falling back to main branch"
+  TAG="main"
+fi
+
+DOWNLOAD_URL="https://raw.githubusercontent.com/${GH_REPO}/${TAG}/cw.sh"
 
 # ── Download ──────────────────────────────────────────────────────────────
 mkdir -p "$BIN_DIR"
-echo "Downloading cw..."
-curl -fsSL "$REPO" -o "$BIN_PATH"
+echo "Downloading cw ${TAG}..."
+curl -fsSL "$DOWNLOAD_URL" -o "$BIN_PATH"
 chmod +x "$BIN_PATH"
 
 # ── Shell setup ───────────────────────────────────────────────────────────
