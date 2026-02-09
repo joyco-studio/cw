@@ -6,7 +6,7 @@
 #   cw new <name> [flags] [prompt]  Create a worktree + open claude
 #   cw open <name> [prompt]         Open Claude in an existing worktree
 #   cw ls                           List active worktrees
-#   cw cd <name>                    Print the path (use: cd $(cw cd <name>))
+#   cw cd <name>                    cd into a worktree
 #   cw merge <name> [--local]      Push branch + create PR (or local squash with --local)
 #   cw rm <name>                    Remove a worktree and its branch
 #   cw clean                        Remove ALL worktrees created by cw
@@ -492,7 +492,7 @@ cmd_help() {
   echo "  cw new <name> [flags] [prompt]  Create worktree + open claude"
   echo "  cw open <name> [prompt]         Open Claude in existing worktree"
   echo "  cw ls                           List active worktrees"
-  echo '  cw cd <name>                    Print path (use: cd $(cw cd <name>))'
+  echo "  cw cd <name>                    cd into a worktree"
   echo "  cw merge <name> [--local]       Push branch + create PR (--local for local squash)"
   echo "  cw rm <name>                    Remove a worktree (no merge)"
   echo "  cw clean                        Remove all cw worktrees"
@@ -541,4 +541,27 @@ main() {
   esac
 }
 
-main "$@"
+# ── Source-aware entry point ──────────────────────────────────────────────
+# When sourced, define a cw() wrapper so `cw cd` can change the shell's
+# working directory.  When executed directly, run normally.
+_cw_sourced=0
+if [ -n "${ZSH_VERSION:-}" ]; then
+  case "$ZSH_EVAL_CONTEXT" in *:file) _cw_sourced=1 ;; esac
+elif [ -n "${BASH_VERSION:-}" ]; then
+  if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then _cw_sourced=1; fi
+fi
+
+if [ "$_cw_sourced" -eq 1 ]; then
+  cw() {
+    if [ "$1" = "cd" ]; then
+      shift
+      local dir
+      dir="$(command cw cd "$@")" && builtin cd "$dir"
+    else
+      command cw "$@"
+    fi
+  }
+else
+  main "$@"
+fi
+unset _cw_sourced
