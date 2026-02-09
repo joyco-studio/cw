@@ -5,14 +5,10 @@ A CLI tool for spinning up isolated git worktrees to run parallel Claude Code se
 ## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh -o ~/.local/bin/cw && chmod +x ~/.local/bin/cw
+curl -fsSL https://raw.githubusercontent.com/joyco-studio/cw/main/install.sh | bash
 ```
 
-> **Note:** Make sure `~/.local/bin` exists and is in your PATH. If not:
-> ```bash
-> mkdir -p ~/.local/bin
-> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc  # or ~/.bashrc
-> ```
+Then restart your terminal.
 
 ## Usage
 
@@ -20,7 +16,7 @@ curl -fsSL https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh -o ~/.lo
 cw new <name> [flags] [prompt]  # Create a worktree + open Claude
 cw open <name> [prompt]         # Open Claude in existing worktree
 cw ls                           # List active worktrees
-cw cd <name>                    # Print path (use: cd $(cw cd <name>))
+cw cd <name>                    # cd into a worktree
 cw merge <name> [--local]       # Push branch + create PR (--local for local squash)
 cw rm <name>                    # Remove a worktree (no merge)
 cw clean                        # Remove all cw worktrees

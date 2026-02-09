@@ -1,0 +1,57 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.4](https://github.com/joyco-studio/cw/compare/v0.1.3...v0.1.4) (2026-02-09)
+
+
+### Features
+
+* add git-style descriptions to zsh tab completions ([cfa7e80](https://github.com/joyco-studio/cw/commit/cfa7e80af85d125d2f14c74f4e86565a0e525f0f))
+
+## [0.1.3](https://github.com/joyco-studio/cw/compare/v0.1.2...v0.1.3) (2026-02-09)
+
+
+### Bug Fixes
+
+* use native zsh completion to fix excessive tab completion spacing ([cc5eacb](https://github.com/joyco-studio/cw/commit/cc5eacba30a41bfea63d31f3ac46af46e3055e26))
+
+## [0.1.2](https://github.com/joyco-studio/cw/compare/v0.1.1...v0.1.2) (2026-02-09)
+
+
+### Features
+
+* add tab completion for bash and zsh ([82dfb33](https://github.com/joyco-studio/cw/commit/82dfb33f62a3506acb34607e012c99c0f068abb7))
+
+## [0.1.1](https://github.com/joyco-studio/cw/compare/v0.1.0...v0.1.1) (2026-02-09)
+
+
+### Features
+
+* add release-please for automated versioning ([7e42573](https://github.com/joyco-studio/cw/commit/7e4257396d81ee6da19b723e91f24b691cbc37f2))
+
+## [Unreleased]
+
+## [0.1.0] - 2025-06-07
+
+### Added
+
+- `cw new` — create isolated git worktrees with auto dependency install
+- `cw open` — open Claude Code in an existing worktree
+- `cw ls` — list active worktrees with branch and commit info
+- `cw cd` — cd into a worktree (shell integration)
+- `cw merge` — push branch + create PR, or local squash merge with `--local`
+- `cw rm` — remove a single worktree and its branch
+- `cw clean` — remove all cw worktrees
+- `cw upgrade` — self-update to the latest GitHub release
+- `cw version` / `cw --version` — display current version
+- Versioning system using semver and GitHub Releases
+- Shell integration for bash and zsh (source-aware wrapper)
+- Auto-detection of base branch (main/master)
+- Auto-detection and installation of project dependencies (npm, yarn, pnpm)
+
+[Unreleased]: https://github.com/joyco-studio/cw/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/joyco-studio/cw/releases/tag/v0.1.0

@@ -6,10 +6,12 @@
 #   cw new <name> [flags] [prompt]  Create a worktree + open claude
 #   cw open <name> [prompt]         Open Claude in an existing worktree
 #   cw ls                           List active worktrees
-#   cw cd <name>                    Print the path (use: cd $(cw cd <name>))
+#   cw cd <name>                    cd into a worktree
 #   cw merge <name> [--local]      Push branch + create PR (or local squash with --local)
 #   cw rm <name>                    Remove a worktree and its branch
 #   cw clean                        Remove ALL worktrees created by cw
+#   cw upgrade                      Upgrade cw to the latest version
+#   cw version                      Show current version
 #   cw help                         Show this help
 #
 # Flags for `new`:
@@ -25,6 +27,9 @@
 #   cw clean
 
 set -euo pipefail
+
+# ── Version ───────────────────────────────────────────────────────────────
+CW_VERSION="0.1.4" # x-release-please-version
 
 # ── Config ──────────────────────────────────────────────────────────────────
 CW_PREFIX="cw"                          # branch prefix to namespace cw branches
@@ -47,7 +52,14 @@ ok()   { echo -e "${GREEN}✓${RESET} $*"; }
 warn() { echo -e "${YELLOW}⚠${RESET} $*"; }
 
 get_repo_root() {
-  git rev-parse --show-toplevel 2>/dev/null || die "not inside a git repository"
+  # Use --git-common-dir to always resolve to the main repository root,
+  # even when invoked from inside a worktree. In a worktree, --show-toplevel
+  # returns the worktree dir, but --git-common-dir points to the main repo's .git.
+  local git_common_dir
+  git_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || die "not inside a git repository"
+  local abs_git_dir
+  abs_git_dir="$(cd "$git_common_dir" 2>/dev/null && pwd)" || die "not inside a git repository"
+  dirname "$abs_git_dir"
 }
 
 get_base_branch() {
@@ -385,8 +397,10 @@ cmd_merge() {
 
     if command -v gh &>/dev/null; then
       info "Creating pull request..."
-      if gh pr create --fill --head "$branch" --base "$BASE_BRANCH"; then
+      local pr_url
+      if pr_url=$(gh pr create --fill --head "$branch" --base "$BASE_BRANCH" 2>&1); then
         ok "PR created"
+        echo -e "   ${DIM}${pr_url}${RESET}"
       else
         warn "Could not create PR via gh — you may need to open one manually"
         echo -e "   ${DIM}gh pr create --head ${branch} --base ${BASE_BRANCH}${RESET}"
@@ -483,6 +497,53 @@ cmd_clean() {
   ok "All clean."
 }
 
+cmd_upgrade() {
+  command -v curl &>/dev/null || die "curl is required for upgrade"
+
+  local bin_path
+  bin_path="$(command -v cw 2>/dev/null || echo "$HOME/.local/bin/cw")"
+  local gh_repo="joyco-studio/cw"
+  local api_url="https://api.github.com/repos/${gh_repo}/releases/latest"
+
+  info "Current version: ${BOLD}${CW_VERSION}${RESET}"
+  info "Checking for updates..."
+
+  # Fetch latest release tag from GitHub Releases API
+  local api_response
+  api_response="$(curl -fsSL "$api_url" 2>/dev/null)" \
+    || die "failed to check for updates — check your internet connection"
+
+  # Parse tag_name from JSON (e.g. "v0.2.0") without jq dependency
+  local latest_tag
+  latest_tag="$(echo "$api_response" | grep -m1 '"tag_name"' | cut -d'"' -f4)"
+  [[ -n "$latest_tag" ]] || die "could not determine latest version"
+
+  # Strip leading 'v' for comparison (v0.2.0 → 0.2.0)
+  local latest_version="${latest_tag#v}"
+
+  if [[ "$latest_version" == "$CW_VERSION" ]]; then
+    ok "Already on the latest version ${BOLD}${CW_VERSION}${RESET}"
+    return
+  fi
+
+  info "New version available: ${BOLD}${latest_version}${RESET}"
+  info "Downloading ${latest_tag}..."
+
+  # Download the script from the tagged release
+  local download_url="https://raw.githubusercontent.com/${gh_repo}/${latest_tag}/cw.sh"
+  local tmp
+  tmp="$(mktemp)"
+  if curl -fsSL "$download_url" -o "$tmp"; then
+    chmod +x "$tmp"
+    mv -f "$tmp" "$bin_path"
+    ok "Upgraded ${BOLD}${CW_VERSION}${RESET} → ${BOLD}${latest_version}${RESET}"
+    echo -e "   ${DIM}Restart your shell or run: source ${bin_path}${RESET}"
+  else
+    rm -f "$tmp"
+    die "download failed — could not fetch ${latest_tag}"
+  fi
+}
+
 cmd_help() {
   echo -e "${BOLD}cw${RESET} — Claude Worktree manager"
   echo ""
@@ -490,10 +551,12 @@ cmd_help() {
   echo "  cw new <name> [flags] [prompt]  Create worktree + open claude"
   echo "  cw open <name> [prompt]         Open Claude in existing worktree"
   echo "  cw ls                           List active worktrees"
-  echo '  cw cd <name>                    Print path (use: cd $(cw cd <name>))'
+  echo "  cw cd <name>                    cd into a worktree"
   echo "  cw merge <name> [--local]       Push branch + create PR (--local for local squash)"
   echo "  cw rm <name>                    Remove a worktree (no merge)"
   echo "  cw clean                        Remove all cw worktrees"
+  echo "  cw upgrade                      Upgrade cw to the latest version"
+  echo "  cw version                      Show current version"
   echo "  cw help                         Show this help"
   echo ""
   echo -e "${BOLD}Flags for new:${RESET}"
@@ -534,9 +597,158 @@ main() {
     merge) cmd_merge "$@" ;;
     rm)    cmd_rm "$@" ;;
     clean) cmd_clean ;;
+    upgrade) cmd_upgrade ;;
     help|-h|--help) cmd_help ;;
+    version|--version|-v) echo "cw ${CW_VERSION}" ;;
     *)     die "unknown command: ${cmd}\nRun 'cw help' for usage." ;;
   esac
 }
 
-main "$@"
+# ── Tab Completion ────────────────────────────────────────────────────────
+
+# List existing worktree names (used by completions)
+_cw_list_worktree_names() {
+  local repo_root git_common_dir
+  git_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
+  repo_root="$(cd "$git_common_dir" 2>/dev/null && pwd)" || return 0
+  repo_root="$(dirname "$repo_root")"
+  local wt_dir="${repo_root}/.worktrees"
+  if [[ -d "$wt_dir" ]]; then
+    local d
+    for d in "${wt_dir}"/*/; do
+      [[ -d "$d" ]] && basename "$d"
+    done
+  fi
+}
+
+# Zsh-native completion function (avoids bashcompinit spacing issues)
+_cw_zsh() {
+  local -a names
+
+  if (( CURRENT == 2 )); then
+    local -a commands
+    commands=(
+      'cd:change directory into a worktree'
+      'clean:remove all cw worktrees'
+      'help:show usage information'
+      'ls:list active worktrees'
+      'merge:push branch and create a pull request'
+      'new:create a worktree and open Claude'
+      'open:open Claude in an existing worktree'
+      'rm:remove a worktree'
+      'upgrade:upgrade cw to the latest version'
+      'version:show current version'
+    )
+    _describe 'command' commands
+    return
+  fi
+
+  local cmd="${words[2]}"
+
+  case "$cmd" in
+    new)
+      if [[ "$words[CURRENT]" == -* ]]; then
+        local -a flags
+        flags=(
+          '--open:open Claude immediately'
+          '--no-open:create worktree without opening Claude'
+        )
+        _describe 'flag' flags
+      fi
+      ;;
+    open|cd|rm)
+      if (( CURRENT == 3 )); then
+        names=("${(@f)$(_cw_list_worktree_names)}")
+        [[ -n "${names[1]}" ]] && compadd -a names
+      fi
+      ;;
+    merge)
+      if (( CURRENT == 3 )); then
+        names=("${(@f)$(_cw_list_worktree_names)}")
+        [[ -n "${names[1]}" ]] && compadd -a names
+      elif [[ "$words[CURRENT]" == -* ]]; then
+        local -a flags
+        flags=(
+          '--local:squash merge locally without creating a PR'
+        )
+        _describe 'flag' flags
+      fi
+      ;;
+  esac
+}
+
+# Bash completion function
+_cw_completions() {
+  local cur prev
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  local commands="new open ls cd merge rm clean upgrade help version"
+
+  # Complete command name (first argument)
+  if [[ "$COMP_CWORD" -eq 1 ]]; then
+    COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+    return
+  fi
+
+  local cmd="${COMP_WORDS[1]}"
+
+  case "$cmd" in
+    new)
+      # Flags only — name is free-form
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--open --no-open" -- "$cur"))
+      fi
+      ;;
+    open|cd|rm)
+      # Complete worktree names for the <name> argument
+      if [[ "$COMP_CWORD" -eq 2 ]]; then
+        local names
+        names="$(_cw_list_worktree_names)"
+        COMPREPLY=($(compgen -W "$names" -- "$cur"))
+      fi
+      ;;
+    merge)
+      # First arg: worktree name.  After that: --local flag
+      if [[ "$COMP_CWORD" -eq 2 ]]; then
+        local names
+        names="$(_cw_list_worktree_names)"
+        COMPREPLY=($(compgen -W "$names" -- "$cur"))
+      elif [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--local" -- "$cur"))
+      fi
+      ;;
+  esac
+}
+
+# ── Source-aware entry point ──────────────────────────────────────────────
+# When sourced, define a cw() wrapper so `cw cd` can change the shell's
+# working directory.  When executed directly, run normally.
+_cw_sourced=0
+if [ -n "${ZSH_VERSION:-}" ]; then
+  case "$ZSH_EVAL_CONTEXT" in *:file) _cw_sourced=1 ;; esac
+elif [ -n "${BASH_VERSION:-}" ]; then
+  if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then _cw_sourced=1; fi
+fi
+
+if [ "$_cw_sourced" -eq 1 ]; then
+  cw() {
+    if [ "$1" = "cd" ]; then
+      shift
+      local dir
+      dir="$(command cw cd "$@")" && builtin cd "$dir"
+    else
+      command cw "$@"
+    fi
+  }
+
+  # Register completions
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    compdef _cw_zsh cw
+  elif [ -n "${BASH_VERSION:-}" ]; then
+    complete -F _cw_completions cw
+  fi
+else
+  main "$@"
+fi
+unset _cw_sourced
