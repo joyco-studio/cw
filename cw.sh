@@ -26,6 +26,158 @@
 #   cw merge auth
 #   cw clean
 
+# ── Source-aware entry point (early short-circuit) ────────────────────────
+# When sourced (e.g. from .zshrc), define ONLY the cw() wrapper and tab
+# completions, then return immediately.  This prevents set -euo pipefail,
+# globals, and helpers from leaking into the interactive shell.
+
+_cw_is_sourced=0
+if [ -n "${ZSH_VERSION:-}" ]; then
+  case "$ZSH_EVAL_CONTEXT" in *:file) _cw_is_sourced=1 ;; esac
+elif [ -n "${BASH_VERSION:-}" ]; then
+  if [[ -n "${BASH_SOURCE[0]}" && "${BASH_SOURCE[0]}" != "${0}" ]]; then _cw_is_sourced=1; fi
+fi
+
+if [ "$_cw_is_sourced" -eq 1 ]; then
+  cw() {
+    if [ "$1" = "cd" ]; then
+      shift
+      local dir
+      dir="$(command cw cd "$@")" && builtin cd "$dir"
+    else
+      command cw "$@" || { echo "cw: command not found — is ~/.local/bin in your PATH?" >&2; return 127; }
+    fi
+  }
+
+  # List existing worktree names (used by completions)
+  _cw_list_worktree_names() {
+    local repo_root git_common_dir
+    git_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
+    repo_root="$(cd "$git_common_dir" 2>/dev/null && pwd)" || return 0
+    repo_root="$(dirname "$repo_root")"
+    local wt_dir="${repo_root}/.worktrees"
+    if [[ -d "$wt_dir" ]]; then
+      local d
+      for d in "${wt_dir}"/*/; do
+        [[ -d "$d" ]] && basename "$d"
+      done
+    fi
+  }
+
+  # Zsh-native completion function
+  _cw_zsh() {
+    local -a names
+
+    if (( CURRENT == 2 )); then
+      local -a commands
+      commands=(
+        'cd:change directory into a worktree'
+        'clean:remove all cw worktrees'
+        'help:show usage information'
+        'ls:list active worktrees'
+        'merge:push branch and create a pull request'
+        'new:create a worktree and open Claude'
+        'open:open Claude in an existing worktree'
+        'rm:remove a worktree'
+        'upgrade:upgrade cw to the latest version'
+        'version:show current version'
+      )
+      _describe 'command' commands
+      return
+    fi
+
+    local cmd="${words[2]}"
+
+    case "$cmd" in
+      new)
+        if [[ "$words[CURRENT]" == -* ]]; then
+          local -a flags
+          flags=(
+            '--open:open Claude immediately'
+            '--no-open:create worktree without opening Claude'
+          )
+          _describe 'flag' flags
+        fi
+        ;;
+      open|cd|rm)
+        if (( CURRENT == 3 )); then
+          names=("${(@f)$(_cw_list_worktree_names)}")
+          [[ -n "${names[1]}" ]] && compadd -a names
+        fi
+        ;;
+      merge)
+        if (( CURRENT == 3 )); then
+          names=("${(@f)$(_cw_list_worktree_names)}")
+          [[ -n "${names[1]}" ]] && compadd -a names
+        elif [[ "$words[CURRENT]" == -* ]]; then
+          local -a flags
+          flags=(
+            '--local:squash merge locally without creating a PR'
+          )
+          _describe 'flag' flags
+        fi
+        ;;
+    esac
+  }
+
+  # Bash completion function
+  _cw_completions() {
+    local cur prev
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    local commands="new open ls cd merge rm clean upgrade help version"
+
+    # Complete command name (first argument)
+    if [[ "$COMP_CWORD" -eq 1 ]]; then
+      COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+      return
+    fi
+
+    local cmd="${COMP_WORDS[1]}"
+
+    case "$cmd" in
+      new)
+        # Flags only — name is free-form
+        if [[ "$cur" == -* ]]; then
+          COMPREPLY=($(compgen -W "--open --no-open" -- "$cur"))
+        fi
+        ;;
+      open|cd|rm)
+        # Complete worktree names for the <name> argument
+        if [[ "$COMP_CWORD" -eq 2 ]]; then
+          local names
+          names="$(_cw_list_worktree_names)"
+          COMPREPLY=($(compgen -W "$names" -- "$cur"))
+        fi
+        ;;
+      merge)
+        # First arg: worktree name.  After that: --local flag
+        if [[ "$COMP_CWORD" -eq 2 ]]; then
+          local names
+          names="$(_cw_list_worktree_names)"
+          COMPREPLY=($(compgen -W "$names" -- "$cur"))
+        elif [[ "$cur" == -* ]]; then
+          COMPREPLY=($(compgen -W "--local" -- "$cur"))
+        fi
+        ;;
+    esac
+  }
+
+  # Register completions
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    compdef _cw_zsh cw
+  elif [ -n "${BASH_VERSION:-}" ]; then
+    complete -F _cw_completions cw
+  fi
+
+  unset _cw_is_sourced
+  return 0
+fi
+unset _cw_is_sourced
+
+# ── Everything below only runs in direct-execution mode ───────────────────
+
 set -euo pipefail
 
 # ── Version ───────────────────────────────────────────────────────────────
@@ -604,151 +756,4 @@ main() {
   esac
 }
 
-# ── Tab Completion ────────────────────────────────────────────────────────
-
-# List existing worktree names (used by completions)
-_cw_list_worktree_names() {
-  local repo_root git_common_dir
-  git_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
-  repo_root="$(cd "$git_common_dir" 2>/dev/null && pwd)" || return 0
-  repo_root="$(dirname "$repo_root")"
-  local wt_dir="${repo_root}/.worktrees"
-  if [[ -d "$wt_dir" ]]; then
-    local d
-    for d in "${wt_dir}"/*/; do
-      [[ -d "$d" ]] && basename "$d"
-    done
-  fi
-}
-
-# Zsh-native completion function (avoids bashcompinit spacing issues)
-_cw_zsh() {
-  local -a names
-
-  if (( CURRENT == 2 )); then
-    local -a commands
-    commands=(
-      'cd:change directory into a worktree'
-      'clean:remove all cw worktrees'
-      'help:show usage information'
-      'ls:list active worktrees'
-      'merge:push branch and create a pull request'
-      'new:create a worktree and open Claude'
-      'open:open Claude in an existing worktree'
-      'rm:remove a worktree'
-      'upgrade:upgrade cw to the latest version'
-      'version:show current version'
-    )
-    _describe 'command' commands
-    return
-  fi
-
-  local cmd="${words[2]}"
-
-  case "$cmd" in
-    new)
-      if [[ "$words[CURRENT]" == -* ]]; then
-        local -a flags
-        flags=(
-          '--open:open Claude immediately'
-          '--no-open:create worktree without opening Claude'
-        )
-        _describe 'flag' flags
-      fi
-      ;;
-    open|cd|rm)
-      if (( CURRENT == 3 )); then
-        names=("${(@f)$(_cw_list_worktree_names)}")
-        [[ -n "${names[1]}" ]] && compadd -a names
-      fi
-      ;;
-    merge)
-      if (( CURRENT == 3 )); then
-        names=("${(@f)$(_cw_list_worktree_names)}")
-        [[ -n "${names[1]}" ]] && compadd -a names
-      elif [[ "$words[CURRENT]" == -* ]]; then
-        local -a flags
-        flags=(
-          '--local:squash merge locally without creating a PR'
-        )
-        _describe 'flag' flags
-      fi
-      ;;
-  esac
-}
-
-# Bash completion function
-_cw_completions() {
-  local cur prev
-  cur="${COMP_WORDS[COMP_CWORD]}"
-  prev="${COMP_WORDS[COMP_CWORD-1]}"
-
-  local commands="new open ls cd merge rm clean upgrade help version"
-
-  # Complete command name (first argument)
-  if [[ "$COMP_CWORD" -eq 1 ]]; then
-    COMPREPLY=($(compgen -W "$commands" -- "$cur"))
-    return
-  fi
-
-  local cmd="${COMP_WORDS[1]}"
-
-  case "$cmd" in
-    new)
-      # Flags only — name is free-form
-      if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--open --no-open" -- "$cur"))
-      fi
-      ;;
-    open|cd|rm)
-      # Complete worktree names for the <name> argument
-      if [[ "$COMP_CWORD" -eq 2 ]]; then
-        local names
-        names="$(_cw_list_worktree_names)"
-        COMPREPLY=($(compgen -W "$names" -- "$cur"))
-      fi
-      ;;
-    merge)
-      # First arg: worktree name.  After that: --local flag
-      if [[ "$COMP_CWORD" -eq 2 ]]; then
-        local names
-        names="$(_cw_list_worktree_names)"
-        COMPREPLY=($(compgen -W "$names" -- "$cur"))
-      elif [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--local" -- "$cur"))
-      fi
-      ;;
-  esac
-}
-
-# ── Source-aware entry point ──────────────────────────────────────────────
-# When sourced, define a cw() wrapper so `cw cd` can change the shell's
-# working directory.  When executed directly, run normally.
-_cw_sourced=0
-if [ -n "${ZSH_VERSION:-}" ]; then
-  case "$ZSH_EVAL_CONTEXT" in *:file) _cw_sourced=1 ;; esac
-elif [ -n "${BASH_VERSION:-}" ]; then
-  if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then _cw_sourced=1; fi
-fi
-
-if [ "$_cw_sourced" -eq 1 ]; then
-  cw() {
-    if [ "$1" = "cd" ]; then
-      shift
-      local dir
-      dir="$(command cw cd "$@")" && builtin cd "$dir"
-    else
-      command cw "$@"
-    fi
-  }
-
-  # Register completions
-  if [ -n "${ZSH_VERSION:-}" ]; then
-    compdef _cw_zsh cw
-  elif [ -n "${BASH_VERSION:-}" ]; then
-    complete -F _cw_completions cw
-  fi
-else
-  main "$@"
-fi
-unset _cw_sourced
+main "$@"
