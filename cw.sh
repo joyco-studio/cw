@@ -47,7 +47,14 @@ ok()   { echo -e "${GREEN}✓${RESET} $*"; }
 warn() { echo -e "${YELLOW}⚠${RESET} $*"; }
 
 get_repo_root() {
-  git rev-parse --show-toplevel 2>/dev/null || die "not inside a git repository"
+  # Use --git-common-dir to always resolve to the main repository root,
+  # even when invoked from inside a worktree. In a worktree, --show-toplevel
+  # returns the worktree dir, but --git-common-dir points to the main repo's .git.
+  local git_common_dir
+  git_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || die "not inside a git repository"
+  local abs_git_dir
+  abs_git_dir="$(cd "$git_common_dir" 2>/dev/null && pwd)" || die "not inside a git repository"
+  dirname "$abs_git_dir"
 }
 
 get_base_branch() {
