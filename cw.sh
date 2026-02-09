@@ -10,6 +10,8 @@
 #   cw merge <name> [--local]      Push branch + create PR (or local squash with --local)
 #   cw rm <name>                    Remove a worktree and its branch
 #   cw clean                        Remove ALL worktrees created by cw
+#   cw upgrade                      Upgrade cw to the latest version
+#   cw version                      Show current version
 #   cw help                         Show this help
 #
 # Flags for `new`:
@@ -25,6 +27,9 @@
 #   cw clean
 
 set -euo pipefail
+
+# ── Version ───────────────────────────────────────────────────────────────
+CW_VERSION="0.1.0" # x-release-please-version
 
 # ── Config ──────────────────────────────────────────────────────────────────
 CW_PREFIX="cw"                          # branch prefix to namespace cw branches
@@ -492,6 +497,53 @@ cmd_clean() {
   ok "All clean."
 }
 
+cmd_upgrade() {
+  command -v curl &>/dev/null || die "curl is required for upgrade"
+
+  local bin_path
+  bin_path="$(command -v cw 2>/dev/null || echo "$HOME/.local/bin/cw")"
+  local gh_repo="joyco-studio/cw"
+  local api_url="https://api.github.com/repos/${gh_repo}/releases/latest"
+
+  info "Current version: ${BOLD}${CW_VERSION}${RESET}"
+  info "Checking for updates..."
+
+  # Fetch latest release tag from GitHub Releases API
+  local api_response
+  api_response="$(curl -fsSL "$api_url" 2>/dev/null)" \
+    || die "failed to check for updates — check your internet connection"
+
+  # Parse tag_name from JSON (e.g. "v0.2.0") without jq dependency
+  local latest_tag
+  latest_tag="$(echo "$api_response" | grep -m1 '"tag_name"' | cut -d'"' -f4)"
+  [[ -n "$latest_tag" ]] || die "could not determine latest version"
+
+  # Strip leading 'v' for comparison (v0.2.0 → 0.2.0)
+  local latest_version="${latest_tag#v}"
+
+  if [[ "$latest_version" == "$CW_VERSION" ]]; then
+    ok "Already on the latest version ${BOLD}${CW_VERSION}${RESET}"
+    return
+  fi
+
+  info "New version available: ${BOLD}${latest_version}${RESET}"
+  info "Downloading ${latest_tag}..."
+
+  # Download the script from the tagged release
+  local download_url="https://raw.githubusercontent.com/${gh_repo}/${latest_tag}/cw.sh"
+  local tmp
+  tmp="$(mktemp)"
+  if curl -fsSL "$download_url" -o "$tmp"; then
+    chmod +x "$tmp"
+    mv -f "$tmp" "$bin_path"
+    ok "Upgraded ${BOLD}${CW_VERSION}${RESET} → ${BOLD}${latest_version}${RESET}"
+    echo -e "   ${DIM}Restart your shell or run: source ${bin_path}${RESET}"
+  else
+    rm -f "$tmp"
+    die "download failed — could not fetch ${latest_tag}"
+  fi
+}
+
 cmd_help() {
   echo -e "${BOLD}cw${RESET} — Claude Worktree manager"
   echo ""
@@ -503,6 +555,8 @@ cmd_help() {
   echo "  cw merge <name> [--local]       Push branch + create PR (--local for local squash)"
   echo "  cw rm <name>                    Remove a worktree (no merge)"
   echo "  cw clean                        Remove all cw worktrees"
+  echo "  cw upgrade                      Upgrade cw to the latest version"
+  echo "  cw version                      Show current version"
   echo "  cw help                         Show this help"
   echo ""
   echo -e "${BOLD}Flags for new:${RESET}"
@@ -543,7 +597,9 @@ main() {
     merge) cmd_merge "$@" ;;
     rm)    cmd_rm "$@" ;;
     clean) cmd_clean ;;
+    upgrade) cmd_upgrade ;;
     help|-h|--help) cmd_help ;;
+    version|--version|-v) echo "cw ${CW_VERSION}" ;;
     *)     die "unknown command: ${cmd}\nRun 'cw help' for usage." ;;
   esac
 }
