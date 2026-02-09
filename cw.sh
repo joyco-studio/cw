@@ -7,7 +7,6 @@
 #   cw open <name> [prompt]         Open Claude in an existing worktree
 #   cw ls                           List active worktrees
 #   cw cd <name>                    cd into a worktree
-#   cw init                         Print shell wrapper (eval in your rc file)
 #   cw merge <name> [--local]      Push branch + create PR (or local squash with --local)
 #   cw rm <name>                    Remove a worktree and its branch
 #   cw clean                        Remove ALL worktrees created by cw
@@ -258,20 +257,6 @@ cmd_cd() {
   echo "$wt_path"
 }
 
-cmd_init() {
-  cat <<'SHELL'
-cw() {
-  if [ "$1" = "cd" ]; then
-    shift
-    local dir
-    dir="$(command cw cd "$@")" && builtin cd "$dir"
-  else
-    command cw "$@"
-  fi
-}
-SHELL
-}
-
 cmd_open() {
   local name="${1:?usage: cw open <name> [prompt]}"
   shift
@@ -508,7 +493,6 @@ cmd_help() {
   echo "  cw open <name> [prompt]         Open Claude in existing worktree"
   echo "  cw ls                           List active worktrees"
   echo "  cw cd <name>                    cd into a worktree"
-  echo "  cw init                         Print shell wrapper (eval in rc file)"
   echo "  cw merge <name> [--local]       Push branch + create PR (--local for local squash)"
   echo "  cw rm <name>                    Remove a worktree (no merge)"
   echo "  cw clean                        Remove all cw worktrees"
@@ -549,7 +533,6 @@ main() {
     open)  cmd_open "$@" ;;
     ls)    cmd_ls ;;
     cd)    cmd_cd "$@" ;;
-    init)  cmd_init ;;
     merge) cmd_merge "$@" ;;
     rm)    cmd_rm "$@" ;;
     clean) cmd_clean ;;
@@ -558,4 +541,27 @@ main() {
   esac
 }
 
-main "$@"
+# ── Source-aware entry point ──────────────────────────────────────────────
+# When sourced, define a cw() wrapper so `cw cd` can change the shell's
+# working directory.  When executed directly, run normally.
+_cw_sourced=0
+if [ -n "${ZSH_VERSION:-}" ]; then
+  case "$ZSH_EVAL_CONTEXT" in *:file) _cw_sourced=1 ;; esac
+elif [ -n "${BASH_VERSION:-}" ]; then
+  if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then _cw_sourced=1; fi
+fi
+
+if [ "$_cw_sourced" -eq 1 ]; then
+  cw() {
+    if [ "$1" = "cd" ]; then
+      shift
+      local dir
+      dir="$(command cw cd "$@")" && builtin cd "$dir"
+    else
+      command cw "$@"
+    fi
+  }
+else
+  main "$@"
+fi
+unset _cw_sourced

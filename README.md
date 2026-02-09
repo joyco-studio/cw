@@ -8,17 +8,15 @@ A CLI tool for spinning up isolated git worktrees to run parallel Claude Code se
 curl -fsSL https://raw.githubusercontent.com/joyco-studio/cw/main/cw.sh -o ~/.local/bin/cw && chmod +x ~/.local/bin/cw
 ```
 
-> **Note:** Make sure `~/.local/bin` exists and is in your PATH. If not:
-> ```bash
-> mkdir -p ~/.local/bin
-> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc  # or ~/.bashrc
-> ```
-
-Then add this to your `~/.bashrc` or `~/.zshrc` so that `cw cd` can change your shell directory:
+Then add this to your `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-eval "$(cw init)"
+source ~/.local/bin/cw
 ```
+
+This gives you the `cw` command and lets `cw cd` change your working directory.
+
+> **Note:** Make sure `~/.local/bin` exists (`mkdir -p ~/.local/bin`). You do **not** need to add it to PATH — sourcing the file is all you need.
 
 ## Usage
 
