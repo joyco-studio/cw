@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4](https://github.com/joyco-studio/cw/compare/v0.1.3...v0.1.4) (2026-02-09)
+
+
+### Features
+
+* add git-style descriptions to zsh tab completions ([cfa7e80](https://github.com/joyco-studio/cw/commit/cfa7e80af85d125d2f14c74f4e86565a0e525f0f))
+
 ## [0.1.3](https://github.com/joyco-studio/cw/compare/v0.1.2...v0.1.3) (2026-02-09)
 
 
