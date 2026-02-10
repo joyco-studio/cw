@@ -20,6 +20,7 @@ cw cd <name>                    # cd into a worktree
 cw merge <name> [--local]       # Push branch + create PR (--local for local squash)
 cw rm <name>                    # Remove a worktree (no merge)
 cw clean                        # Remove all cw worktrees
+cw hook init                    # Scaffold a cw-hook.sh in your repo
 cw help                         # Show help
 ```
 
@@ -64,12 +65,56 @@ cw rm api                              # Discard without merging
 cw clean                               # Remove all worktrees
 ```
 
+## Hooks
+
+Worktrees only get files tracked by git. Untracked files like `.env`, `.vercel/`, or `.env.local` are lost on every `cw new`. The **hook system** solves this.
+
+### Quick start
+
+```bash
+cw hook init    # scaffolds cw-hook.sh at your repo root
+```
+
+Edit the generated file to copy whatever your project needs:
+
+```bash
+#!/usr/bin/env bash
+TARGET="$1"   # the new worktree path
+SOURCE="$2"   # the repo root path
+
+# Environment variables
+[[ -f .env.local ]] && cp .env.local "$TARGET/"
+
+# Vercel project config
+[[ -d .vercel ]] && cp -r .vercel "$TARGET/"
+```
+
+The hook runs automatically after every `cw new`, right after dependency installation. It runs from the repo root directory.
+
+### Contract
+
+| Aspect | Detail |
+|--------|--------|
+| **File** | `cw-hook.sh` at the repository root |
+| **Trigger** | Runs after `cw new` (after deps install, before opening Claude) |
+| **Arguments** | `$1` = target worktree path, `$2` = repo root path |
+| **Working dir** | Repository root |
+| **Permissions** | Must be executable (`chmod +x`) |
+| **Exit code** | `0` = success, non-zero = warning (won't abort worktree creation) |
+
+### Tips
+
+- **Copy vs symlink** — Use `cp` for files that might diverge per worktree (`.env`). Use `ln -s` for large shared caches you don't want to duplicate.
+- **Git-ignore the hook** — If your hook contains secrets or is developer-specific, add `cw-hook.sh` to `.gitignore`. If it's useful for the whole team, commit it.
+- **Idempotent copies** — The hook only runs on `cw new`, not on `cw open`, so each worktree gets one shot. Use `cp -n` (no-clobber) if you want extra safety.
+
 ## How It Works
 
 - Worktrees are created under `<repo>/.worktrees/<name>`
 - Branches are prefixed with `cw/` (e.g., `cw/auth`)
 - Auto-detects `main` or `master` as the base branch
 - Auto-installs dependencies (npm/yarn/pnpm) when creating worktrees
+- Runs `cw-hook.sh` (if present) to copy untracked files into new worktrees
 
 ### Merge Behavior
 

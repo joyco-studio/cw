@@ -10,6 +10,7 @@
 #   cw merge <name> [--local]      Push branch + create PR (or local squash with --local)
 #   cw rm <name>                    Remove a worktree and its branch
 #   cw clean                        Remove ALL worktrees created by cw
+#   cw hook init                    Scaffold a cw-hook.sh in your repo
 #   cw upgrade                      Upgrade cw to the latest version
 #   cw version                      Show current version
 #   cw help                         Show this help
@@ -74,6 +75,7 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
         'cd:change directory into a worktree'
         'clean:remove all cw worktrees'
         'help:show usage information'
+        'hook:manage project hooks (init)'
         'ls:list active worktrees'
         'merge:push branch and create a pull request'
         'new:create a worktree and open Claude'
@@ -117,6 +119,13 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
           _describe 'flag' flags
         fi
         ;;
+      hook)
+        if (( CURRENT == 3 )); then
+          local -a subcmds
+          subcmds=('init:scaffold a cw-hook.sh in your repo')
+          _describe 'subcommand' subcmds
+        fi
+        ;;
     esac
   }
 
@@ -126,7 +135,7 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    local commands="new open ls cd merge rm clean upgrade help version"
+    local commands="new open ls cd merge rm clean hook upgrade help version"
 
     # Complete command name (first argument)
     if [[ "$COMP_CWORD" -eq 1 ]]; then
@@ -161,6 +170,11 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
           COMPREPLY=($(compgen -W "--local" -- "$cur"))
         fi
         ;;
+      hook)
+        if [[ "$COMP_CWORD" -eq 2 ]]; then
+          COMPREPLY=($(compgen -W "init" -- "$cur"))
+        fi
+        ;;
     esac
   }
 
@@ -186,6 +200,7 @@ CW_VERSION="0.1.7" # x-release-please-version
 # ── Config ──────────────────────────────────────────────────────────────────
 CW_PREFIX="cw"                          # branch prefix to namespace cw branches
 CW_DIR_PREFIX=".worktrees"              # folder name under repo root for worktrees
+CW_HOOK_FILE="cw-hook.sh"              # project hook executed after worktree creation
 BASE_BRANCH=""                           # auto-detected below
 
 # ── Colors ──────────────────────────────────────────────────────────────────
@@ -272,6 +287,29 @@ prompt_open_claude() {
   done
 }
 
+# ── Hook support ──────────────────────────────────────────────────────────
+
+run_hook() {
+  local repo_root="$1"
+  local wt_path="$2"
+  local hook="${repo_root}/${CW_HOOK_FILE}"
+
+  [[ -f "$hook" ]] || return 0
+
+  if [[ ! -x "$hook" ]]; then
+    warn "Found ${CW_HOOK_FILE} but it's not executable — skipping"
+    echo -e "   ${DIM}Run: chmod +x ${hook}${RESET}"
+    return 0
+  fi
+
+  info "Running ${CW_HOOK_FILE}..."
+  if (cd "$repo_root" && "$hook" "$wt_path" "$repo_root"); then
+    ok "Hook completed"
+  else
+    warn "Hook exited with errors — worktree creation continues"
+  fi
+}
+
 # ── Commands ────────────────────────────────────────────────────────────────
 
 cmd_new() {
@@ -336,6 +374,9 @@ cmd_new() {
   elif [[ -f "${wt_path}/pyproject.toml" ]]; then
     info "Found pyproject.toml — remember to set up your venv"
   fi
+
+  # ── Post-setup: run project hook if present ──
+  run_hook "$repo_root" "$wt_path"
 
   ok "Worktree ready at ${BOLD}${wt_path}${RESET}"
   echo -e "   Branch: ${DIM}${branch}${RESET}"
@@ -662,6 +703,54 @@ cmd_clean() {
   ok "All clean."
 }
 
+cmd_hook() {
+  local subcmd="${1:-}"
+  case "$subcmd" in
+    init) cmd_hook_init ;;
+    *)    die "usage: cw hook init" ;;
+  esac
+}
+
+cmd_hook_init() {
+  local repo_root
+  repo_root="$(get_repo_root)"
+  local hook="${repo_root}/${CW_HOOK_FILE}"
+
+  if [[ -f "$hook" ]]; then
+    die "${CW_HOOK_FILE} already exists at ${hook}"
+  fi
+
+  cat > "$hook" << 'TEMPLATE'
+#!/usr/bin/env bash
+# cw-hook.sh — runs after every `cw new` worktree creation
+#
+# Arguments:
+#   $1 — target worktree path (the newly created worktree)
+#   $2 — repo root path (the main repository)
+#
+# This script runs from the repo root directory.
+# Exit code 0 = success, non-zero = warning (won't abort worktree creation).
+#
+# Use it to copy untracked files that your project needs but
+# that aren't (and shouldn't be) tracked by git.
+
+TARGET="$1"
+SOURCE="$2"
+
+# ── Copy untracked project files ─────────────────────────────────────────
+
+# Environment variables
+# [[ -f .env.local ]] && cp .env.local "$TARGET/"
+
+# Vercel project config
+# [[ -d .vercel ]] && cp -r .vercel "$TARGET/"
+TEMPLATE
+
+  chmod +x "$hook"
+  ok "Created ${BOLD}${CW_HOOK_FILE}${RESET} at ${DIM}${hook}${RESET}"
+  echo -e "   ${DIM}Edit it to copy your untracked project files to new worktrees${RESET}"
+}
+
 cmd_upgrade() {
   command -v curl &>/dev/null || die "curl is required for upgrade"
 
@@ -720,6 +809,7 @@ cmd_help() {
   echo "  cw merge <name> [--local]       Push branch + create PR (--local for local squash)"
   echo "  cw rm <name>                    Remove a worktree (no merge)"
   echo "  cw clean                        Remove all cw worktrees"
+  echo "  cw hook init                    Scaffold a cw-hook.sh in your repo"
   echo "  cw upgrade                      Upgrade cw to the latest version"
   echo "  cw version                      Show current version"
   echo "  cw help                         Show this help"
@@ -745,6 +835,11 @@ cmd_help() {
   echo '  cw rm api                                  # discard without merging'
   echo '  cw clean'
   echo ""
+  echo -e "${BOLD}Hooks:${RESET}"
+  echo "  Place a cw-hook.sh at your repo root to run custom setup after"
+  echo "  every \`cw new\`. It receives the worktree path as \$1 and the"
+  echo "  repo root as \$2. Use \`cw hook init\` to scaffold one."
+  echo ""
   echo -e "${DIM}Worktrees live under <repo>/${CW_DIR_PREFIX}/<name>${RESET}"
   echo -e "${DIM}Branches are prefixed with ${CW_PREFIX}/${RESET}"
 }
@@ -762,6 +857,7 @@ main() {
     merge) cmd_merge "$@" ;;
     rm)    cmd_rm "$@" ;;
     clean) cmd_clean ;;
+    hook)  cmd_hook "$@" ;;
     upgrade) cmd_upgrade ;;
     help|-h|--help) cmd_help ;;
     version|--version|-v) echo "cw ${CW_VERSION}" ;;
