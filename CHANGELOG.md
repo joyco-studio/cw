@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8](https://github.com/joyco-studio/cw/compare/v0.1.7...v0.1.8) (2026-02-10)
+
+
+### Features
+
+* add cw-hook.sh support for preserving untracked files across worktrees ([772979b](https://github.com/joyco-studio/cw/commit/772979ba4abf3b449200665eb77628f775bcadcd))
+* add cw-hook.sh.example with .env.local and .vercel copy rules ([9a87d37](https://github.com/joyco-studio/cw/commit/9a87d37d4a7ccbd83aa01e73e46b34cd7d06d5a1))
+
 ## [0.1.7](https://github.com/joyco-studio/cw/compare/v0.1.6...v0.1.7) (2026-02-10)
 
 
