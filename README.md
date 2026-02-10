@@ -82,12 +82,14 @@ Edit the generated file to copy whatever your project needs:
 TARGET="$1"   # the new worktree path
 SOURCE="$2"   # the repo root path
 
-cp .env "$TARGET/"
-cp .env.local "$TARGET/"
-cp -r .vercel "$TARGET/"
+# Environment variables
+[[ -f .env.local ]] && cp .env.local "$TARGET/"
+
+# Vercel project config
+[[ -d .vercel ]] && cp -r .vercel "$TARGET/"
 ```
 
-The hook runs automatically after every `cw new`, right after dependency installation. It runs from the repo root directory.
+The hook runs automatically after every `cw new`, right after dependency installation. It runs from the repo root directory. See [`cw-hook.sh.example`](cw-hook.sh.example) for a ready-to-use template.
 
 ### Contract
 

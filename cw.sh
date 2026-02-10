@@ -737,11 +737,13 @@ cmd_hook_init() {
 TARGET="$1"
 SOURCE="$2"
 
-# ── Add your copy/link rules below ──────────────────────────────────────
+# ── Copy untracked project files ─────────────────────────────────────────
 
-# cp .env "$TARGET/"
-# cp .env.local "$TARGET/"
-# cp -r .vercel "$TARGET/"
+# Environment variables
+# [[ -f .env.local ]] && cp .env.local "$TARGET/"
+
+# Vercel project config
+# [[ -d .vercel ]] && cp -r .vercel "$TARGET/"
 TEMPLATE
 
   chmod +x "$hook"
