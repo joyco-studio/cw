@@ -89,7 +89,7 @@ SOURCE="$2"   # the repo root path
 [[ -d .vercel ]] && cp -r .vercel "$TARGET/"
 ```
 
-The hook runs automatically after every `cw new`, right after dependency installation. It runs from the repo root directory. See [`cw-hook.sh.example`](cw-hook.sh.example) for a ready-to-use template.
+The hook runs automatically after every `cw new`, right after dependency installation. It runs from the repo root directory.
 
 ### Contract
 
