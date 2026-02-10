@@ -6,7 +6,7 @@
 #   cw new <name> [flags] [prompt]  Create a worktree + open claude
 #   cw open <name> [prompt]         Open Claude in an existing worktree
 #   cw ls                           List active worktrees
-#   cw cd <name>                    cd into a worktree
+#   cw cd [name]                    cd into a worktree (or repo root)
 #   cw merge <name> [--local]      Push branch + create PR (or local squash with --local)
 #   cw rm <name>                    Remove a worktree and its branch
 #   cw clean                        Remove ALL worktrees created by cw
@@ -181,7 +181,7 @@ unset _cw_is_sourced
 set -euo pipefail
 
 # ── Version ───────────────────────────────────────────────────────────────
-CW_VERSION="0.1.5" # x-release-please-version
+CW_VERSION="0.1.6" # x-release-please-version
 
 # ── Config ──────────────────────────────────────────────────────────────────
 CW_PREFIX="cw"                          # branch prefix to namespace cw branches
@@ -412,9 +412,15 @@ cmd_ls() {
 }
 
 cmd_cd() {
-  local name="${1:?usage: cw cd <name>}"
+  local name="${1:-}"
   local repo_root
   repo_root="$(get_repo_root)"
+
+  if [[ -z "$name" ]]; then
+    echo "$repo_root"
+    return
+  fi
+
   local wt_path
   wt_path="$(worktree_path "$repo_root" "$name")"
 
@@ -710,7 +716,7 @@ cmd_help() {
   echo "  cw new <name> [flags] [prompt]  Create worktree + open claude"
   echo "  cw open <name> [prompt]         Open Claude in existing worktree"
   echo "  cw ls                           List active worktrees"
-  echo "  cw cd <name>                    cd into a worktree"
+  echo "  cw cd [name]                    cd into a worktree (or repo root)"
   echo "  cw merge <name> [--local]       Push branch + create PR (--local for local squash)"
   echo "  cw rm <name>                    Remove a worktree (no merge)"
   echo "  cw clean                        Remove all cw worktrees"
