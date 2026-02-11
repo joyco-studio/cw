@@ -338,6 +338,12 @@ cmd_new() {
 
   [[ -n "$name" ]] || die "usage: cw new <name> [--open|--no-open] [prompt]"
 
+  # Strip the cw/ prefix if the user included it (e.g. "cw new cw/auth" → "auth")
+  name="${name#"${CW_PREFIX}/"}"
+
+  # Reject names containing slashes — they would create nested directories
+  [[ "$name" == */* ]] && die "worktree name cannot contain slashes: ${name}"
+
   local prompt="${prompt_parts[*]:-}"
 
   local repo_root
@@ -470,6 +476,7 @@ cmd_ls() {
 
 cmd_cd() {
   local name="${1:-}"
+  name="${name#"${CW_PREFIX}/"}"
   local repo_root
   repo_root="$(get_repo_root)"
 
@@ -487,6 +494,7 @@ cmd_cd() {
 
 cmd_open() {
   local name="${1:?usage: cw open <name> [prompt]}"
+  name="${name#"${CW_PREFIX}/"}"
   shift
   local prompt="${*:-}"
 
@@ -511,6 +519,7 @@ cmd_open() {
 
 cmd_merge() {
   local name="${1:?usage: cw merge <name> [--local]}"
+  name="${name#"${CW_PREFIX}/"}"
   shift
   local local_only=false
   for arg in "$@"; do
@@ -657,6 +666,7 @@ cmd_merge() {
 
 cmd_rm() {
   local name="${1:?usage: cw rm <name>}"
+  name="${name#"${CW_PREFIX}/"}"
   local repo_root
   repo_root="$(get_repo_root)"
   local wt_path branch
