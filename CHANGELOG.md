@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9](https://github.com/joyco-studio/cw/compare/v0.1.8...v0.1.9) (2026-02-11)
+
+
+### Features
+
+* add --verbose flag for hook output ([0621773](https://github.com/joyco-studio/cw/commit/06217739743f7383bdea1d835b104fd6a8bc0c47))
+* auto-resume existing branch in `cw new` ([1521bcf](https://github.com/joyco-studio/cw/commit/1521bcf07024139181a65407308dd3145aa68602))
+
+
+### Bug Fixes
+
+* strip cw/ prefix from name and reject slashes ([9ca1272](https://github.com/joyco-studio/cw/commit/9ca127294bfb0822b501cfb6c2e659de49e2c469))
+
 ## [0.1.8](https://github.com/joyco-studio/cw/compare/v0.1.7...v0.1.8) (2026-02-10)
 
 
