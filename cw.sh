@@ -15,10 +15,12 @@
 #   cw version                      Show current version
 #   cw help                         Show this help
 #
+# Global flags:
+#   --verbose    Show full command output (stdout + stderr)
+#
 # Flags for `new`:
 #   --open       Open Claude immediately (skip prompt)
 #   --no-open    Don't open Claude (skip prompt)
-#   --verbose    Show full hook output (stdout + stderr)
 #   (default)    Interactive — press Enter to open, ESC to skip
 #
 # If a branch cw/<name> already exists (e.g. worktree was removed but branch
@@ -102,15 +104,27 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
           flags=(
             '--open:open Claude immediately'
             '--no-open:create worktree without opening Claude'
-            '--verbose:show full hook output'
+            '--verbose:show full command output'
           )
           _describe 'flag' flags
         fi
         ;;
-      open|cd|rm)
+      open|cd)
         if (( CURRENT == 3 )); then
           names=("${(@f)$(_cw_list_worktree_names)}")
           [[ -n "${names[1]}" ]] && compadd -a names
+        fi
+        ;;
+      rm)
+        if (( CURRENT == 3 )); then
+          names=("${(@f)$(_cw_list_worktree_names)}")
+          [[ -n "${names[1]}" ]] && compadd -a names
+        elif [[ "$words[CURRENT]" == -* ]]; then
+          local -a flags
+          flags=(
+            '--verbose:show full command output'
+          )
+          _describe 'flag' flags
         fi
         ;;
       merge)
@@ -121,6 +135,16 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
           local -a flags
           flags=(
             '--local:squash merge locally without creating a PR'
+            '--verbose:show full command output'
+          )
+          _describe 'flag' flags
+        fi
+        ;;
+      clean|upgrade)
+        if [[ "$words[CURRENT]" == -* ]]; then
+          local -a flags
+          flags=(
+            '--verbose:show full command output'
           )
           _describe 'flag' flags
         fi
@@ -158,7 +182,7 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
           COMPREPLY=($(compgen -W "--open --no-open --verbose" -- "$cur"))
         fi
         ;;
-      open|cd|rm)
+      open|cd)
         # Complete worktree names for the <name> argument
         if [[ "$COMP_CWORD" -eq 2 ]]; then
           local names
@@ -166,14 +190,28 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
           COMPREPLY=($(compgen -W "$names" -- "$cur"))
         fi
         ;;
-      merge)
-        # First arg: worktree name.  After that: --local flag
+      rm)
         if [[ "$COMP_CWORD" -eq 2 ]]; then
           local names
           names="$(_cw_list_worktree_names)"
           COMPREPLY=($(compgen -W "$names" -- "$cur"))
         elif [[ "$cur" == -* ]]; then
-          COMPREPLY=($(compgen -W "--local" -- "$cur"))
+          COMPREPLY=($(compgen -W "--verbose" -- "$cur"))
+        fi
+        ;;
+      merge)
+        # First arg: worktree name.  After that: flags
+        if [[ "$COMP_CWORD" -eq 2 ]]; then
+          local names
+          names="$(_cw_list_worktree_names)"
+          COMPREPLY=($(compgen -W "$names" -- "$cur"))
+        elif [[ "$cur" == -* ]]; then
+          COMPREPLY=($(compgen -W "--local --verbose" -- "$cur"))
+        fi
+        ;;
+      clean|upgrade)
+        if [[ "$cur" == -* ]]; then
+          COMPREPLY=($(compgen -W "--verbose" -- "$cur"))
         fi
         ;;
       hook)
@@ -208,6 +246,7 @@ CW_PREFIX="cw"                          # branch prefix to namespace cw branches
 CW_DIR_PREFIX=".worktrees"              # folder name under repo root for worktrees
 CW_HOOK_FILE="cw-hook.sh"              # project hook executed after worktree creation
 BASE_BRANCH=""                           # auto-detected below
+VERBOSE=false                            # show full command output when true
 
 # ── Colors ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -298,7 +337,6 @@ prompt_open_claude() {
 run_hook() {
   local repo_root="$1"
   local wt_path="$2"
-  local verbose="${3:-false}"
   local hook="${repo_root}/${CW_HOOK_FILE}"
 
   [[ -f "$hook" ]] || return 0
@@ -311,7 +349,7 @@ run_hook() {
 
   info "Running ${CW_HOOK_FILE}..."
 
-  if [[ "$verbose" == true ]]; then
+  if [[ "$VERBOSE" == true ]]; then
     # Stream output live
     if (cd "$repo_root" && "$hook" "$wt_path" "$repo_root"); then
       ok "Hook completed"
@@ -328,7 +366,7 @@ run_hook() {
       if [[ -n "$hook_output" ]]; then
         echo -e "   ${DIM}${hook_output}${RESET}"
       fi
-      echo -e "   ${DIM}Re-run with --verbose to see full hook output${RESET}"
+      echo -e "   ${DIM}Re-run with --verbose to see full output${RESET}"
     fi
   fi
 }
@@ -339,14 +377,12 @@ cmd_new() {
   # Parse: cw new <name> [--open|--no-open] [prompt...]
   local name=""
   local open_mode=""  # "yes", "no", or "" (interactive)
-  local verbose=false
   local prompt_parts=()
 
   for arg in "$@"; do
     case "$arg" in
       --open)    open_mode="yes" ;;
       --no-open) open_mode="no" ;;
-      --verbose) verbose=true ;;
       *)
         if [[ -z "$name" ]]; then
           name="$arg"
@@ -392,22 +428,42 @@ cmd_new() {
   if git show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null; then
     resuming=true
     info "Resuming worktree ${BOLD}${name}${RESET} from existing branch ${DIM}${branch}${RESET}"
-    git worktree add "$wt_path" "$branch" --quiet
+    if [[ "$VERBOSE" == true ]]; then
+      git worktree add "$wt_path" "$branch"
+    else
+      git worktree add "$wt_path" "$branch" --quiet
+    fi
   else
     info "Creating worktree ${BOLD}${name}${RESET} from ${DIM}${current_ref}${RESET}"
-    git worktree add -b "$branch" "$wt_path" HEAD --quiet
+    if [[ "$VERBOSE" == true ]]; then
+      git worktree add -b "$branch" "$wt_path" HEAD
+    else
+      git worktree add -b "$branch" "$wt_path" HEAD --quiet
+    fi
   fi
 
   # ── Post-setup: install deps if needed ──
   if [[ -f "${wt_path}/package-lock.json" ]]; then
     info "Installing npm dependencies..."
-    (cd "$wt_path" && npm install --silent 2>/dev/null) || warn "npm install had issues — you may need to install manually"
+    if [[ "$VERBOSE" == true ]]; then
+      (cd "$wt_path" && npm install) || warn "npm install had issues — you may need to install manually"
+    else
+      (cd "$wt_path" && npm install --silent 2>/dev/null) || warn "npm install had issues — you may need to install manually"
+    fi
   elif [[ -f "${wt_path}/yarn.lock" ]]; then
     info "Installing yarn dependencies..."
-    (cd "$wt_path" && yarn install --silent 2>/dev/null) || warn "yarn install had issues"
+    if [[ "$VERBOSE" == true ]]; then
+      (cd "$wt_path" && yarn install) || warn "yarn install had issues"
+    else
+      (cd "$wt_path" && yarn install --silent 2>/dev/null) || warn "yarn install had issues"
+    fi
   elif [[ -f "${wt_path}/pnpm-lock.yaml" ]]; then
     info "Installing pnpm dependencies..."
-    (cd "$wt_path" && pnpm install --silent 2>/dev/null) || warn "pnpm install had issues"
+    if [[ "$VERBOSE" == true ]]; then
+      (cd "$wt_path" && pnpm install) || warn "pnpm install had issues"
+    else
+      (cd "$wt_path" && pnpm install --silent 2>/dev/null) || warn "pnpm install had issues"
+    fi
   elif [[ -f "${wt_path}/requirements.txt" ]]; then
     info "Found requirements.txt — remember to set up your venv"
   elif [[ -f "${wt_path}/pyproject.toml" ]]; then
@@ -415,7 +471,7 @@ cmd_new() {
   fi
 
   # ── Post-setup: run project hook if present ──
-  run_hook "$repo_root" "$wt_path" "$verbose"
+  run_hook "$repo_root" "$wt_path"
 
   if [[ "$resuming" == true ]]; then
     ok "Worktree resumed at ${BOLD}${wt_path}${RESET}"
@@ -614,7 +670,18 @@ cmd_merge() {
 
     # Squash merge into current HEAD (no branch switch)
     info "Merging..."
-    if git -C "$repo_root" merge --squash "$branch" --quiet 2>/dev/null; then
+    if [[ "$VERBOSE" == true ]]; then
+      if git -C "$repo_root" merge --squash "$branch"; then
+        git -C "$repo_root" commit -m "$commit_msg"
+        ok "Squash-merged ${BOLD}${branch}${RESET} into ${BOLD}${BASE_BRANCH}${RESET}"
+      else
+        echo ""
+        warn "Merge conflicts detected. Resolve them, then run:"
+        echo -e "   ${DIM}git commit${RESET}"
+        echo -e "   ${DIM}cw rm ${name}${RESET}"
+        return 1
+      fi
+    elif git -C "$repo_root" merge --squash "$branch" --quiet 2>/dev/null; then
       git -C "$repo_root" commit -m "$commit_msg" --quiet
       ok "Squash-merged ${BOLD}${branch}${RESET} into ${BOLD}${BASE_BRANCH}${RESET}"
     else
@@ -641,10 +708,18 @@ cmd_merge() {
     fi
 
     info "Pushing branch ${BOLD}${branch}${RESET} to ${has_remote}..."
-    if git push -u "$has_remote" "$branch" 2>/dev/null; then
-      ok "Pushed branch to remote"
+    if [[ "$VERBOSE" == true ]]; then
+      if git push -u "$has_remote" "$branch"; then
+        ok "Pushed branch to remote"
+      else
+        die "push failed — check your remote configuration"
+      fi
     else
-      die "push failed — check your remote configuration"
+      if git push -u "$has_remote" "$branch" 2>/dev/null; then
+        ok "Pushed branch to remote"
+      else
+        die "push failed — check your remote configuration"
+      fi
     fi
 
     if command -v gh &>/dev/null; then
@@ -666,7 +741,11 @@ cmd_merge() {
   # Cleanup worktree (but handle branch differently based on mode)
   echo ""
   info "Cleaning up worktree..."
-  git worktree remove "$wt_path" --force 2>/dev/null || rm -rf "$wt_path"
+  if [[ "$VERBOSE" == true ]]; then
+    git worktree remove "$wt_path" --force || rm -rf "$wt_path"
+  else
+    git worktree remove "$wt_path" --force 2>/dev/null || rm -rf "$wt_path"
+  fi
   git worktree prune
 
   local wt_dir="${repo_root}/${CW_DIR_PREFIX}"
@@ -697,7 +776,11 @@ cmd_rm() {
   [[ -d "$wt_path" ]] || die "worktree '${name}' not found"
 
   info "Removing worktree ${BOLD}${name}${RESET}..."
-  git worktree remove "$wt_path" --force 2>/dev/null || rm -rf "$wt_path"
+  if [[ "$VERBOSE" == true ]]; then
+    git worktree remove "$wt_path" --force || rm -rf "$wt_path"
+  else
+    git worktree remove "$wt_path" --force 2>/dev/null || rm -rf "$wt_path"
+  fi
   git worktree prune
 
   if git show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null; then
@@ -742,7 +825,11 @@ cmd_clean() {
     [[ -d "$dir" ]] || continue
     local name
     name="$(basename "$dir")"
-    cmd_rm "$name" 2>/dev/null || warn "Failed to remove ${name}"
+    if [[ "$VERBOSE" == true ]]; then
+      cmd_rm "$name" || warn "Failed to remove ${name}"
+    else
+      cmd_rm "$name" 2>/dev/null || warn "Failed to remove ${name}"
+    fi
   done
 
   rmdir "$wt_dir" 2>/dev/null || true
@@ -811,8 +898,13 @@ cmd_upgrade() {
 
   # Fetch latest release tag from GitHub Releases API
   local api_response
-  api_response="$(curl -fsSL "$api_url" 2>/dev/null)" \
-    || die "failed to check for updates — check your internet connection"
+  if [[ "$VERBOSE" == true ]]; then
+    api_response="$(curl -fsSL "$api_url")" \
+      || die "failed to check for updates — check your internet connection"
+  else
+    api_response="$(curl -fsSL "$api_url" 2>/dev/null)" \
+      || die "failed to check for updates — check your internet connection"
+  fi
 
   # Parse tag_name from JSON (e.g. "v0.2.0") without jq dependency
   local latest_tag
@@ -861,10 +953,12 @@ cmd_help() {
   echo "  cw version                      Show current version"
   echo "  cw help                         Show this help"
   echo ""
+  echo -e "${BOLD}Global flags:${RESET}"
+  echo "  --verbose    Show full command output (stdout + stderr)"
+  echo ""
   echo -e "${BOLD}Flags for new:${RESET}"
   echo "  --open       Open Claude immediately (skip prompt)"
   echo "  --no-open    Don't open Claude (skip prompt)"
-  echo "  --verbose    Show full hook output (stdout + stderr)"
   echo "  (default)    Interactive — press Enter to open, ESC to skip"
   echo ""
   echo -e "${BOLD}Workflow:${RESET}"
@@ -902,6 +996,16 @@ cmd_help() {
 
 # ── Main ────────────────────────────────────────────────────────────────────
 main() {
+  # Parse global flags (--verbose) before dispatching
+  local args=()
+  for arg in "$@"; do
+    case "$arg" in
+      --verbose) VERBOSE=true ;;
+      *)         args+=("$arg") ;;
+    esac
+  done
+  set -- "${args[@]}"
+
   local cmd="${1:-help}"
   shift 2>/dev/null || true
 
