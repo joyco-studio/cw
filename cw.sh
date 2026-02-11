@@ -20,10 +20,14 @@
 #   --no-open    Don't open Claude (skip prompt)
 #   (default)    Interactive — press Enter to open, ESC to skip
 #
+# If a branch cw/<name> already exists (e.g. worktree was removed but branch
+# was kept), `cw new <name>` will resume from that branch automatically.
+#
 # Examples:
 #   cw new auth "implement OAuth2 login flow"
 #   cw new api --open "build REST endpoints"
 #   cw new tests --no-open
+#   cw rm auth && cw new auth "continue"     # resume from existing branch
 #   cw merge auth
 #   cw clean
 
@@ -356,8 +360,16 @@ cmd_new() {
     echo "${CW_DIR_PREFIX}/" > "$gitignore"
   fi
 
-  info "Creating worktree ${BOLD}${name}${RESET} from ${DIM}${current_ref}${RESET}"
-  git worktree add -b "$branch" "$wt_path" HEAD --quiet
+  # Check if the branch already exists (e.g. worktree was removed but branch kept)
+  local resuming=false
+  if git show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null; then
+    resuming=true
+    info "Resuming worktree ${BOLD}${name}${RESET} from existing branch ${DIM}${branch}${RESET}"
+    git worktree add "$wt_path" "$branch" --quiet
+  else
+    info "Creating worktree ${BOLD}${name}${RESET} from ${DIM}${current_ref}${RESET}"
+    git worktree add -b "$branch" "$wt_path" HEAD --quiet
+  fi
 
   # ── Post-setup: install deps if needed ──
   if [[ -f "${wt_path}/package-lock.json" ]]; then
@@ -378,7 +390,11 @@ cmd_new() {
   # ── Post-setup: run project hook if present ──
   run_hook "$repo_root" "$wt_path"
 
-  ok "Worktree ready at ${BOLD}${wt_path}${RESET}"
+  if [[ "$resuming" == true ]]; then
+    ok "Worktree resumed at ${BOLD}${wt_path}${RESET}"
+  else
+    ok "Worktree ready at ${BOLD}${wt_path}${RESET}"
+  fi
   echo -e "   Branch: ${DIM}${branch}${RESET}"
 
   # ── Decide whether to open Claude ──
@@ -824,6 +840,13 @@ cmd_help() {
   echo '  2. Claude works, commits as it goes'
   echo '  3. cw merge auth                          # push branch, open PR, cleanup'
   echo ""
+  echo -e "${BOLD}Resuming:${RESET}"
+  echo '  If you removed a worktree but kept its branch, `cw new` will'
+  echo '  automatically resume from the existing branch instead of creating'
+  echo '  a new one:'
+  echo '  1. cw rm auth                              # remove worktree, keep branch'
+  echo '  2. cw new auth "continue the work"         # resumes from cw/auth branch'
+  echo ""
   echo -e "${BOLD}Examples:${RESET}"
   echo '  cw new auth "implement OAuth2 login"       # interactive open prompt'
   echo '  cw new auth --open "implement OAuth2"      # open immediately'
@@ -833,6 +856,7 @@ cmd_help() {
   echo '  cw merge auth                              # push branch, create PR, cleanup'
   echo '  cw merge auth --local                      # squash merge locally, no PR'
   echo '  cw rm api                                  # discard without merging'
+  echo '  cw new api "pick up where I left off"      # resume from existing branch'
   echo '  cw clean'
   echo ""
   echo -e "${BOLD}Hooks:${RESET}"
