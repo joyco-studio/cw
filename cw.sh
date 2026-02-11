@@ -18,6 +18,7 @@
 # Flags for `new`:
 #   --open       Open Claude immediately (skip prompt)
 #   --no-open    Don't open Claude (skip prompt)
+#   --verbose    Show full hook output (stdout + stderr)
 #   (default)    Interactive — press Enter to open, ESC to skip
 #
 # Examples:
@@ -97,6 +98,7 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
           flags=(
             '--open:open Claude immediately'
             '--no-open:create worktree without opening Claude'
+            '--verbose:show full hook output'
           )
           _describe 'flag' flags
         fi
@@ -149,7 +151,7 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
       new)
         # Flags only — name is free-form
         if [[ "$cur" == -* ]]; then
-          COMPREPLY=($(compgen -W "--open --no-open" -- "$cur"))
+          COMPREPLY=($(compgen -W "--open --no-open --verbose" -- "$cur"))
         fi
         ;;
       open|cd|rm)
@@ -292,6 +294,7 @@ prompt_open_claude() {
 run_hook() {
   local repo_root="$1"
   local wt_path="$2"
+  local verbose="${3:-false}"
   local hook="${repo_root}/${CW_HOOK_FILE}"
 
   [[ -f "$hook" ]] || return 0
@@ -303,10 +306,26 @@ run_hook() {
   fi
 
   info "Running ${CW_HOOK_FILE}..."
-  if (cd "$repo_root" && "$hook" "$wt_path" "$repo_root"); then
-    ok "Hook completed"
+
+  if [[ "$verbose" == true ]]; then
+    # Stream output live
+    if (cd "$repo_root" && "$hook" "$wt_path" "$repo_root"); then
+      ok "Hook completed"
+    else
+      warn "Hook exited with errors — worktree creation continues"
+    fi
   else
-    warn "Hook exited with errors — worktree creation continues"
+    # Capture output, show only on failure
+    local hook_output
+    if hook_output="$(cd "$repo_root" && "$hook" "$wt_path" "$repo_root" 2>&1)"; then
+      ok "Hook completed"
+    else
+      warn "Hook exited with errors — worktree creation continues"
+      if [[ -n "$hook_output" ]]; then
+        echo -e "   ${DIM}${hook_output}${RESET}"
+      fi
+      echo -e "   ${DIM}Re-run with --verbose to see full hook output${RESET}"
+    fi
   fi
 }
 
@@ -316,12 +335,14 @@ cmd_new() {
   # Parse: cw new <name> [--open|--no-open] [prompt...]
   local name=""
   local open_mode=""  # "yes", "no", or "" (interactive)
+  local verbose=false
   local prompt_parts=()
 
   for arg in "$@"; do
     case "$arg" in
       --open)    open_mode="yes" ;;
       --no-open) open_mode="no" ;;
+      --verbose) verbose=true ;;
       *)
         if [[ -z "$name" ]]; then
           name="$arg"
@@ -376,7 +397,7 @@ cmd_new() {
   fi
 
   # ── Post-setup: run project hook if present ──
-  run_hook "$repo_root" "$wt_path"
+  run_hook "$repo_root" "$wt_path" "$verbose"
 
   ok "Worktree ready at ${BOLD}${wt_path}${RESET}"
   echo -e "   Branch: ${DIM}${branch}${RESET}"
@@ -817,6 +838,7 @@ cmd_help() {
   echo -e "${BOLD}Flags for new:${RESET}"
   echo "  --open       Open Claude immediately (skip prompt)"
   echo "  --no-open    Don't open Claude (skip prompt)"
+  echo "  --verbose    Show full hook output (stdout + stderr)"
   echo "  (default)    Interactive — press Enter to open, ESC to skip"
   echo ""
   echo -e "${BOLD}Workflow:${RESET}"
