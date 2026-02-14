@@ -241,7 +241,7 @@ unset _cw_is_sourced
 set -euo pipefail
 
 # ── Version ───────────────────────────────────────────────────────────────
-CW_VERSION="0.1.10" # x-release-please-version
+CW_VERSION="0.1.11" # x-release-please-version
 
 # ── Config ──────────────────────────────────────────────────────────────────
 CW_PREFIX="cw"                          # branch prefix to namespace cw branches
