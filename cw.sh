@@ -746,6 +746,12 @@ cmd_merge() {
     # Cleanup worktree and branch
     echo ""
     info "Cleaning up worktree..."
+
+    # If we're inside the worktree being removed, cd to repo root first
+    if [[ "$PWD" == "$wt_path"* ]]; then
+      cd "$repo_root" || true
+    fi
+
     if [[ "$VERBOSE" == true ]]; then
       git worktree remove "$wt_path" --force || rm -rf "$wt_path"
     else
@@ -789,6 +795,12 @@ cmd_rm() {
   [[ -d "$wt_path" ]] || die "worktree '${name}' not found"
 
   info "Removing worktree ${BOLD}${name}${RESET}..."
+
+  # If we're inside the worktree being removed, cd to repo root first
+  if [[ "$PWD" == "$wt_path"* ]]; then
+    cd "$repo_root" || true
+  fi
+
   if [[ "$VERBOSE" == true ]]; then
     git worktree remove "$wt_path" --force || rm -rf "$wt_path"
   else
