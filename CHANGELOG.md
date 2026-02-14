@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11](https://github.com/joyco-studio/cw/compare/v0.1.10...v0.1.11) (2026-02-14)
+
+
+### Features
+
+* make merge non-destructive by default, add -c/--clean opt-in ([9e9a2b0](https://github.com/joyco-studio/cw/commit/9e9a2b03a041ae5df6a6a870deaab1ec5ff19b49))
+
+
+### Bug Fixes
+
+* cd to repo root before removing worktree to avoid dead cwd ([00acca2](https://github.com/joyco-studio/cw/commit/00acca268fb4ad88880dbf3578a6ab0c4b993e66))
+
 ## [0.1.10](https://github.com/joyco-studio/cw/compare/v0.1.9...v0.1.10) (2026-02-11)
 
 
