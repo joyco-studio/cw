@@ -135,6 +135,8 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
           local -a flags
           flags=(
             '--local:squash merge locally without creating a PR'
+            '-c:remove worktree and branch after merge'
+            '--clean:remove worktree and branch after merge'
             '--verbose:show full command output'
           )
           _describe 'flag' flags
@@ -206,7 +208,7 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
           names="$(_cw_list_worktree_names)"
           COMPREPLY=($(compgen -W "$names" -- "$cur"))
         elif [[ "$cur" == -* ]]; then
-          COMPREPLY=($(compgen -W "--local --verbose" -- "$cur"))
+          COMPREPLY=($(compgen -W "--local -c --clean --verbose" -- "$cur"))
         fi
         ;;
       clean|upgrade)
@@ -595,13 +597,15 @@ cmd_open() {
 }
 
 cmd_merge() {
-  local name="${1:?usage: cw merge <name> [--local]}"
+  local name="${1:?usage: cw merge <name> [--local] [-c|--clean]}"
   name="${name#"${CW_PREFIX}/"}"
   shift
   local local_only=false
+  local clean=false
   for arg in "$@"; do
     case "$arg" in
       --local) local_only=true ;;
+      -c|--clean) clean=true ;;
       *) die "unknown flag: ${arg}" ;;
     esac
   done
@@ -738,29 +742,44 @@ cmd_merge() {
     fi
   fi
 
-  # Cleanup worktree (but handle branch differently based on mode)
-  echo ""
-  info "Cleaning up worktree..."
-  if [[ "$VERBOSE" == true ]]; then
-    git worktree remove "$wt_path" --force || rm -rf "$wt_path"
-  else
-    git worktree remove "$wt_path" --force 2>/dev/null || rm -rf "$wt_path"
-  fi
-  git worktree prune
+  if [[ "$clean" == true ]]; then
+    # Cleanup worktree and branch
+    echo ""
+    info "Cleaning up worktree..."
 
-  local wt_dir="${repo_root}/${CW_DIR_PREFIX}"
-  rmdir "$wt_dir" 2>/dev/null || true
+    # If we're inside the worktree being removed, cd to repo root first
+    if [[ "$PWD" == "$wt_path"* ]]; then
+      cd "$repo_root" || true
+    fi
 
-  if [[ "$local_only" == true ]]; then
-    # For local merge, delete the branch entirely
-    git branch -D "$branch" 2>/dev/null || true
-    ok "Done — ${BOLD}${name}${RESET} merged and cleaned up"
+    if [[ "$VERBOSE" == true ]]; then
+      git worktree remove "$wt_path" --force || rm -rf "$wt_path"
+    else
+      git worktree remove "$wt_path" --force 2>/dev/null || rm -rf "$wt_path"
+    fi
+    git worktree prune
+
+    local wt_dir="${repo_root}/${CW_DIR_PREFIX}"
+    rmdir "$wt_dir" 2>/dev/null || true
+
+    if [[ "$local_only" == true ]]; then
+      git branch -D "$branch" 2>/dev/null || true
+      ok "Done — ${BOLD}${name}${RESET} merged and cleaned up"
+    else
+      git branch -D "$branch" 2>/dev/null || true
+      ok "Done — PR created for ${BOLD}${name}${RESET}, worktree cleaned up"
+      echo -e "   ${DIM}Remote branch ${branch} will be deleted when PR is merged${RESET}"
+    fi
   else
-    # For PR flow, keep the local branch reference (remote branch is what matters)
-    # The branch will be deleted when PR is merged via GitHub
-    git branch -D "$branch" 2>/dev/null || true
-    ok "Done — PR created for ${BOLD}${name}${RESET}, worktree cleaned up"
-    echo -e "   ${DIM}Remote branch ${branch} will be deleted when PR is merged${RESET}"
+    # Non-destructive: keep worktree and branch
+    echo ""
+    if [[ "$local_only" == true ]]; then
+      ok "Done — ${BOLD}${name}${RESET} merged into ${BOLD}${BASE_BRANCH}${RESET}"
+    else
+      ok "Done — PR created for ${BOLD}${name}${RESET}"
+      echo -e "   ${DIM}Remote branch ${branch} will be deleted when PR is merged${RESET}"
+    fi
+    echo -e "   ${DIM}Worktree and branch kept — use ${RESET}${BOLD}cw merge ${name} --clean${RESET}${DIM} or ${RESET}${BOLD}cw rm ${name}${RESET}${DIM} to remove${RESET}"
   fi
 }
 
@@ -776,6 +795,12 @@ cmd_rm() {
   [[ -d "$wt_path" ]] || die "worktree '${name}' not found"
 
   info "Removing worktree ${BOLD}${name}${RESET}..."
+
+  # If we're inside the worktree being removed, cd to repo root first
+  if [[ "$PWD" == "$wt_path"* ]]; then
+    cd "$repo_root" || true
+  fi
+
   if [[ "$VERBOSE" == true ]]; then
     git worktree remove "$wt_path" --force || rm -rf "$wt_path"
   else
@@ -945,7 +970,7 @@ cmd_help() {
   echo "  cw open <name> [prompt]         Open Claude in existing worktree"
   echo "  cw ls                           List active worktrees"
   echo "  cw cd [name]                    cd into a worktree (or repo root)"
-  echo "  cw merge <name> [--local]       Push branch + create PR (--local for local squash)"
+  echo "  cw merge <name> [flags]         Push branch + create PR (keeps worktree)"
   echo "  cw rm <name>                    Remove a worktree (no merge)"
   echo "  cw clean                        Remove all cw worktrees"
   echo "  cw hook init                    Scaffold a cw-hook.sh in your repo"
@@ -961,10 +986,16 @@ cmd_help() {
   echo "  --no-open    Don't open Claude (skip prompt)"
   echo "  (default)    Interactive — press Enter to open, ESC to skip"
   echo ""
+  echo -e "${BOLD}Flags for merge:${RESET}"
+  echo "  --local      Squash merge locally instead of creating a PR"
+  echo "  -c, --clean  Remove worktree and branch after merge"
+  echo "  (default)    Keeps worktree and branch intact"
+  echo ""
   echo -e "${BOLD}Workflow:${RESET}"
   echo '  1. cw new auth "implement OAuth2 login"   # create + open claude'
   echo '  2. Claude works, commits as it goes'
-  echo '  3. cw merge auth                          # push branch, open PR, cleanup'
+  echo '  3. cw merge auth                          # push branch, open PR'
+  echo '  4. cw rm auth                             # clean up when done'
   echo ""
   echo -e "${BOLD}Resuming:${RESET}"
   echo '  If you removed a worktree but kept its branch, `cw new` will'
@@ -979,8 +1010,10 @@ cmd_help() {
   echo '  cw new api --no-open                       # create only, open later'
   echo '  cw open api                                # open existing worktree'
   echo '  cw open api "continue with tests"          # open with prompt'
-  echo '  cw merge auth                              # push branch, create PR, cleanup'
+  echo '  cw merge auth                              # push branch, create PR (keeps worktree)'
+  echo '  cw merge auth --clean                      # push, create PR, remove worktree'
   echo '  cw merge auth --local                      # squash merge locally, no PR'
+  echo '  cw merge auth --local --clean              # squash merge + remove worktree'
   echo '  cw rm api                                  # discard without merging'
   echo '  cw new api "pick up where I left off"      # resume from existing branch'
   echo '  cw clean'
