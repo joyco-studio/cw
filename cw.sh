@@ -19,9 +19,10 @@
 #   --verbose    Show full command output (stdout + stderr)
 #
 # Flags for `new`:
-#   --open       Open Claude immediately (skip prompt)
-#   --no-open    Don't open Claude (skip prompt)
-#   (default)    Interactive — press Enter to open, ESC to skip
+#   -b, --branch <branch>  Use existing branch (skip creating cw/<name>)
+#   --open                  Open Claude immediately (skip prompt)
+#   --no-open               Don't open Claude (skip prompt)
+#   (default)               Interactive — press Enter to open, ESC to skip
 #
 # If a branch cw/<name> already exists (e.g. worktree was removed but branch
 # was kept), `cw new <name>` will resume from that branch automatically.
@@ -30,7 +31,8 @@
 #   cw new auth "implement OAuth2 login flow"
 #   cw new api --open "build REST endpoints"
 #   cw new tests --no-open
-#   cw rm auth && cw new auth "continue"     # resume from existing branch
+#   cw new hotfix -b feature/existing-branch   # use existing branch directly
+#   cw rm auth && cw new auth "continue"       # resume from existing branch
 #   cw merge auth
 #   cw clean
 
@@ -99,9 +101,16 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
 
     case "$cmd" in
       new)
-        if [[ "$words[CURRENT]" == -* ]]; then
+        if [[ "$words[CURRENT-1]" == "-b" || "$words[CURRENT-1]" == "--branch" ]]; then
+          # Complete branch names after -b/--branch
+          local -a branches
+          branches=("${(@f)$(git branch --format='%(refname:short)' 2>/dev/null)}")
+          [[ -n "${branches[1]}" ]] && compadd -a branches
+        elif [[ "$words[CURRENT]" == -* ]]; then
           local -a flags
           flags=(
+            '-b:use existing branch directly'
+            '--branch:use existing branch directly'
             '--open:open Claude immediately'
             '--no-open:create worktree without opening Claude'
             '--verbose:show full command output'
@@ -179,9 +188,13 @@ if [ "$_cw_is_sourced" -eq 1 ]; then
 
     case "$cmd" in
       new)
-        # Flags only — name is free-form
-        if [[ "$cur" == -* ]]; then
-          COMPREPLY=($(compgen -W "--open --no-open --verbose" -- "$cur"))
+        # Complete branch names after -b/--branch
+        if [[ "$prev" == "-b" || "$prev" == "--branch" ]]; then
+          local branches
+          branches="$(git branch --format='%(refname:short)' 2>/dev/null)"
+          COMPREPLY=($(compgen -W "$branches" -- "$cur"))
+        elif [[ "$cur" == -* ]]; then
+          COMPREPLY=($(compgen -W "-b --branch --open --no-open --verbose" -- "$cur"))
         fi
         ;;
       open|cd)
@@ -376,17 +389,23 @@ run_hook() {
 # ── Commands ────────────────────────────────────────────────────────────────
 
 cmd_new() {
-  # Parse: cw new <name> [--open|--no-open] [prompt...]
+  # Parse: cw new <name> [-b|--branch <branch>] [--open|--no-open] [prompt...]
   local name=""
   local open_mode=""  # "yes", "no", or "" (interactive)
+  local from_branch=""
+  local expecting_branch=false
   local prompt_parts=()
 
   for arg in "$@"; do
     case "$arg" in
-      --open)    open_mode="yes" ;;
-      --no-open) open_mode="no" ;;
+      --open)       open_mode="yes" ;;
+      --no-open)    open_mode="no" ;;
+      -b|--branch)  expecting_branch=true ;;
       *)
-        if [[ -z "$name" ]]; then
+        if [[ "$expecting_branch" == true ]]; then
+          from_branch="$arg"
+          expecting_branch=false
+        elif [[ -z "$name" ]]; then
           name="$arg"
         else
           prompt_parts+=("$arg")
@@ -394,6 +413,8 @@ cmd_new() {
         ;;
     esac
   done
+
+  [[ "$expecting_branch" == true ]] && die "--branch requires a branch name"
 
   [[ -n "$name" ]] || die "usage: cw new <name> [--open|--no-open] [prompt]"
 
@@ -427,7 +448,18 @@ cmd_new() {
 
   # Check if the branch already exists (e.g. worktree was removed but branch kept)
   local resuming=false
-  if git show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null; then
+  if [[ -n "$from_branch" ]]; then
+    # --branch: use existing branch directly (no cw/<name> branch created)
+    git show-ref --verify --quiet "refs/heads/${from_branch}" 2>/dev/null \
+      || die "branch '${from_branch}' does not exist"
+    branch="$from_branch"
+    info "Creating worktree ${BOLD}${name}${RESET} from branch ${DIM}${from_branch}${RESET}"
+    if [[ "$VERBOSE" == true ]]; then
+      git worktree add "$wt_path" "$from_branch"
+    else
+      git worktree add "$wt_path" "$from_branch" --quiet
+    fi
+  elif git show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null; then
     resuming=true
     info "Resuming worktree ${BOLD}${name}${RESET} from existing branch ${DIM}${branch}${RESET}"
     if [[ "$VERBOSE" == true ]]; then
@@ -623,9 +655,12 @@ cmd_merge() {
 
   local wt_path branch
   wt_path="$(worktree_path "$repo_root" "$name")"
-  branch="$(branch_name "$name")"
 
   [[ -d "$wt_path" ]] || die "worktree '${name}' not found"
+
+  # Detect the actual branch from the worktree (supports --branch worktrees)
+  branch="$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null)" \
+    || branch="$(branch_name "$name")"
 
   # Check for uncommitted changes in the worktree
   if ! (cd "$wt_path" && git diff --quiet 2>/dev/null && git diff --cached --quiet 2>/dev/null); then
@@ -790,9 +825,12 @@ cmd_rm() {
   repo_root="$(get_repo_root)"
   local wt_path branch
   wt_path="$(worktree_path "$repo_root" "$name")"
-  branch="$(branch_name "$name")"
 
   [[ -d "$wt_path" ]] || die "worktree '${name}' not found"
+
+  # Detect the actual branch from the worktree (supports --branch worktrees)
+  branch="$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null)" \
+    || branch="$(branch_name "$name")"
 
   info "Removing worktree ${BOLD}${name}${RESET}..."
 
