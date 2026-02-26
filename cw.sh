@@ -8,7 +8,7 @@
 #   cw ls                           List active worktrees
 #   cw cd [name]                    cd into a worktree (or repo root)
 #   cw merge <name> [--local]      Push branch + create PR (or local squash with --local)
-#   cw rm <name>                    Remove a worktree and its branch
+#   cw rm <name> [--clean]          Remove a worktree (--clean also deletes branch)
 #   cw clean                        Remove ALL worktrees created by cw
 #   cw hook init                    Scaffold a cw-hook.sh in your repo
 #   cw upgrade                      Upgrade cw to the latest version
@@ -819,7 +819,15 @@ cmd_merge() {
 }
 
 cmd_rm() {
-  local name="${1:?usage: cw rm <name>}"
+  local name="" clean=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -c|--clean) clean=true; shift ;;
+      -*) die "unknown flag: $1" ;;
+      *)  name="$1"; shift ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "usage: cw rm <name> [-c|--clean]"
   name="${name#"${CW_PREFIX}/"}"
   local repo_root
   repo_root="$(get_repo_root)"
@@ -846,7 +854,7 @@ cmd_rm() {
   fi
   git worktree prune
 
-  if git show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null; then
+  if [[ "$clean" == true ]] && git show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null; then
     if git branch -d "$branch" 2>/dev/null; then
       ok "Removed worktree and branch ${DIM}${branch}${RESET}"
     else
@@ -1009,7 +1017,7 @@ cmd_help() {
   echo "  cw ls                           List active worktrees"
   echo "  cw cd [name]                    cd into a worktree (or repo root)"
   echo "  cw merge <name> [flags]         Push branch + create PR (keeps worktree)"
-  echo "  cw rm <name>                    Remove a worktree (no merge)"
+  echo "  cw rm <name> [flags]            Remove a worktree (keeps branch)"
   echo "  cw clean                        Remove all cw worktrees"
   echo "  cw hook init                    Scaffold a cw-hook.sh in your repo"
   echo "  cw upgrade                      Upgrade cw to the latest version"
@@ -1023,6 +1031,10 @@ cmd_help() {
   echo "  --open       Open Claude immediately (skip prompt)"
   echo "  --no-open    Don't open Claude (skip prompt)"
   echo "  (default)    Interactive — press Enter to open, ESC to skip"
+  echo ""
+  echo -e "${BOLD}Flags for rm:${RESET}"
+  echo "  -c, --clean  Also delete the branch"
+  echo "  (default)    Keeps branch intact"
   echo ""
   echo -e "${BOLD}Flags for merge:${RESET}"
   echo "  --local      Squash merge locally instead of creating a PR"
