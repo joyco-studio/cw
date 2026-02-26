@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13](https://github.com/joyco-studio/cw/compare/v0.1.12...v0.1.13) (2026-02-26)
+
+
+### Features
+
+* make `cw rm` keep branch by default, add --clean flag to delete it ([8900a55](https://github.com/joyco-studio/cw/commit/8900a558356accda1ba99984ddc10999c256629a))
+
 ## [0.1.12](https://github.com/joyco-studio/cw/compare/v0.1.11...v0.1.12) (2026-02-26)
 
 
